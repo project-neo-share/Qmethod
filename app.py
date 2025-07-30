@@ -148,14 +148,13 @@ with tab2:
 
             fig, ax = plt.subplots()
             summary.T.plot(kind='bar', ax=ax)
-            ax.set_title("요인별 TPPP 영역 점수")
+            ax.set_title("요인별 TPPP 영역 점수, fontproperties=font_prop")
             st.pyplot(fig)
         else:
             st.warning("최소 5명의 응답이 필요합니다.")
 
 with tab3:
     if os.path.exists(DATA_PATH):
-        set_custom_korean_font()
         df = pd.read_csv(DATA_PATH)
         st.subheader("🔁 TPPP 블록 간 피드백 네트워크")
         if len(df) >= 5:
@@ -181,7 +180,7 @@ with tab3:
             nx.draw_networkx_edges(G, pos, width=1)
             edge_labels = {(u, v): f"{d['weight']}" for u, v, d in G.edges(data=True)}
             nx.draw_networkx_edge_labels(G, pos, edge_labels=edge_labels, font_size=7)
-            plt.title("진술 간 상관 기반 TPPP 피드백 구조")
+            plt.title("진술 간 상관 기반 TPPP 피드백 구조", fontproperties=font_prop)
             st.pyplot(plt)
         else:
             st.warning("시각화를 위해 최소 5명의 응답이 필요합니다.")
