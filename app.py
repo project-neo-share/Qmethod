@@ -160,13 +160,6 @@ with tab3:
         df = pd.read_csv(DATA_PATH)
         st.subheader("🔁 TPPP 블록 간 피드백 네트워크")
         if len(df) >= 5:
-            # TPPP 정의
-            section_map = {
-                "기술": range(0, 6),
-                "사람": range(6, 12),
-                "장소": range(12, 18),
-                "과정": range(18, 24)
-            }
 
             # 상관행렬 계산
             corr = df.corr()
