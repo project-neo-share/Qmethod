@@ -79,6 +79,13 @@ statements = [
     "데이터센터 완공 이후에도 모니터링과 피드백 체계가 지속되면 신뢰 유지에 도움이 될 수 있다."
 ]
 
+section_map = {
+    "기술": range(0, 6),
+    "사람": range(6, 12),
+    "장소": range(12, 18),
+    "과정": range(18, 24)
+}
+
 scale_map = {
     "전혀 동의하지 않음": 1,
     "동의하지 않음": 2,
@@ -88,8 +95,8 @@ scale_map = {
 }
 scale_labels = list(scale_map.keys())
 
-with tabs[0]:
-    st.markdown("#### 아래 문항에 응답해 주세요.")
+with tab1:
+    st.subheader("✍️ 설문에 응답해 주세요")
     responses = {}
     with st.form(key="likert_form"):
         for idx, stmt in enumerate(statements, 1):
@@ -107,87 +114,73 @@ with tabs[0]:
         df_all.to_csv(DATA_PATH, index=False)
         st.success("응답이 저장되었습니다.")
 
-with tabs[1]:
+with tab2:
     if os.path.exists(DATA_PATH):
         df = pd.read_csv(DATA_PATH)
-        st.subheader("🧠 PCQ 요인 분석")
-        st.write(f"총 응답 수: {len(df)}명")
-
+        st.subheader("📈 요인 분석 및 TPPP 영역별 프로파일링")
         if len(df) >= 5:
-            st.write("✅ 진술 간 상관행렬 기반 요인 추출 중...")
-
-            # 방법 3: 작은 노이즈 추가 (Singular 방지)
             df_noise = df + np.random.normal(0, 0.001, df.shape)
+            fa = FactorAnalyzer(n_factors=2, rotation='varimax')
+            fa.fit(df_noise)
 
-            # 상관행렬 확인 및 정칙성 검사
-            corr = df_noise.corr()
-            if np.linalg.matrix_rank(corr) < corr.shape[0]:
-                st.error("⚠️ 상관행렬이 특이(singular)합니다. 응답 수를 늘려주세요.")
-            else:
-                fa = FactorAnalyzer(rotation='varimax')
-                fa.fit(df_noise)
-                ev, _ = fa.get_eigenvalues()
+            loadings = pd.DataFrame(
+                fa.loadings_,
+                index=[f"Q{idx+1}" for idx in range(len(df.columns))],
+                columns=["요인1", "요인2"]
+            )
 
-                st.write("📌 고유값 (Eigenvalues):")
-                st.bar_chart(ev)
+            st.write("📌 요인 부하 행렬:")
+            st.dataframe(loadings)
 
-                n_factors = st.slider("추출할 요인 수", 1, min(6, len(df.columns)-1), 2)
+            st.write("📊 요인별 TPPP 평균 프로파일")
+            result = []
+            for factor in loadings.columns:
+                scores = []
+                for sec, idxs in section_map.items():
+                    mean = loadings.loc[[f"Q{i+1}" for i in idxs], factor].mean()
+                    scores.append((sec, mean))
+                row = pd.DataFrame(dict(scores), index=[factor])
+                result.append(row)
+            summary = pd.concat(result)
+            st.dataframe(summary.style.background_gradient(axis=1, cmap='Blues'))
 
-                fa = FactorAnalyzer(n_factors=n_factors, rotation='varimax')
-                fa.fit(df_noise)
-                loadings = pd.DataFrame(
-                    fa.loadings_,
-                    index=[f"Q{idx+1}" for idx in range(len(df.columns))],
-                    columns=[f"요인{i+1}" for i in range(n_factors)]
-                )
-
-                st.write("📈 요인 부하 행렬 (진술 기준):")
-                st.dataframe(loadings.style.background_gradient(axis=0, cmap='YlGnBu'))
-
-                st.write("📌 요인별 대표 진술:")
-                for col in loadings.columns:
-                    top = loadings[col].abs().idxmax()
-                    st.markdown(f"- **{col}**: 대표 진술 → {top}")
+            fig, ax = plt.subplots()
+            summary.T.plot(kind='bar', ax=ax)
+            ax.set_title("요인별 TPPP 영역 점수")
+            st.pyplot(fig)
         else:
-            st.warning("요인 분석을 위해 최소 5명의 응답이 필요합니다.")
-    else:
-        st.info("아직 저장된 응답이 없습니다.")
-        
-with tabs[2]:
+            st.warning("최소 5명의 응답이 필요합니다.")
+
+with tab3:
     if os.path.exists(DATA_PATH):
         df = pd.read_csv(DATA_PATH)
-        st.subheader("🔁 cross-statement feedback network")
-
+        st.subheader("🔁 TPPP 블록 간 피드백 네트워크")
         if len(df) >= 5:
-            corr = df.corr()  # 진술 간 상관계수 행렬
+            set_custom_korean_font()
+            corr = df.corr()
             G = nx.Graph()
 
-            # 진술 노드 추가
-            for i in range(len(statements)):
-                G.add_node(f"Q{i+1}", label=statements[i])
+            for i, stmt in enumerate(statements):
+                section = next(s for s, r in section_map.items() if i in r)
+                G.add_node(f"Q{i+1}", label=stmt, section=section)
 
-            # 상관계수 기반 엣지 생성
             for i in range(len(df.columns)):
                 for j in range(i+1, len(df.columns)):
                     weight = corr.iloc[i, j]
-                    if abs(weight) > 0.6:  # 강한 상관만 피드백 연결로 간주
+                    if abs(weight) > 0.6:
                         G.add_edge(f"Q{i+1}", f"Q{j+1}", weight=round(weight, 2))
 
-            set_custom_korean_font()
-            
             pos = nx.spring_layout(G, seed=42)
-            plt.figure(figsize=(13, 10))
-            nx.draw_networkx_nodes(G, pos, node_color='lightblue', node_size=700)
+            plt.figure(figsize=(14, 10))
+            node_colors = [dict(기술='skyblue', 사람='lightgreen', 장소='salmon', 과정='plum')[G.nodes[n]['section']] for n in G.nodes]
+            nx.draw_networkx_nodes(G, pos, node_color=node_colors, node_size=700)
             nx.draw_networkx_labels(G, pos, labels=nx.get_node_attributes(G, 'label'), font_size=8)
-            edges = G.edges(data=True)
-            nx.draw_networkx_edges(G, pos, edgelist=edges, width=1)
-            nx.draw_networkx_edge_labels(G, pos,
-                edge_labels={(u, v): f"{d['weight']}" for u, v, d in edges},
-                font_size=7)
-            plt.title("cross-statement correlation feedback network ")
+            nx.draw_networkx_edges(G, pos, width=1)
+            edge_labels = {(u, v): f"{d['weight']}" for u, v, d in G.edges(data=True)}
+            nx.draw_networkx_edge_labels(G, pos, edge_labels=edge_labels, font_size=7)
+            plt.title("진술 간 상관 기반 TPPP 피드백 구조")
             st.pyplot(plt)
         else:
-            st.warning("피드백 구조 시각화를 위해 최소 5명의 응답이 필요합니다.")
+            st.warning("시각화를 위해 최소 5명의 응답이 필요합니다.")
     else:
         st.info("응답 데이터가 없습니다.")
-
