@@ -13,15 +13,15 @@ st.set_page_config(page_title="Q-Method", layout="wide")
 st.title("데이터센터 지속가능성 인식 조사")
 import matplotlib.font_manager as fm
 
-def set_custom_korean_font():
-    font_path = "fonts/NanumGothic.ttf"  # 상대 경로
+def get_korean_fontprop():
+    font_path = "fonts/NanumGothic.ttf"
     if os.path.exists(font_path):
-        font_prop = fm.FontProperties(fname=font_path)
-        plt.rcParams['font.family'] = font_prop.get_name()
-        plt.rcParams['axes.unicode_minus'] = False
+        return fm.FontProperties(fname=font_path)
     else:
-        plt.rcParams['font.family'] = 'DejaVu Sans'
-    plt.rcParams["axes.unicode_minus"] = False
+        return fm.FontProperties()  # fallback
+
+# 사용 예시
+font_prop = get_korean_fontprop()
 
 # 사용 시점에 호출
 
@@ -117,7 +117,7 @@ with tab1:
 
 with tab2:
     if os.path.exists(DATA_PATH):
-        set_custom_korean_font()
+
         df = pd.read_csv(DATA_PATH)
         st.subheader("📈 요인 분석 및 TPPP 영역별 프로파일링")
         if len(df) >= 5:
@@ -159,7 +159,7 @@ with tab3:
         df = pd.read_csv(DATA_PATH)
         st.subheader("🔁 TPPP 블록 간 피드백 네트워크")
         if len(df) >= 5:
-            set_custom_korean_font()
+    
             corr = df.corr()
             G = nx.Graph()
 
