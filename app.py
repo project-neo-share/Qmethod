@@ -52,7 +52,7 @@ with st.expander("🧩 섹션 설명", expanded=True):
 
 DATA_PATH = "responses.csv"
 
-tab1, tab2, tab3 = st.tabs(["✍️ 설문 응답", "📈 요인 분석", "🔁 인지흐름 분석"])
+tab1, tab2, tab3 = st.tabs(["✍️ 설문 응답", "📈 유형 분석", "🔁 인지흐름 분석"])
 
 statements = [
     "데이터센터는 재생에너지를 사용할 때 환경 책임성을 갖춘 시설로 평가받을 수 있다.",
@@ -102,7 +102,7 @@ with tab1:
     responses = {}
     with st.form(key="likert_form"):
         for idx, stmt in enumerate(statements, 1):
-            response = st.radio(f"{idx}. {stmt}", options=scale_labels, key=f"stmt_{idx}")
+            response = st.radio(f"{idx}. {stmt}", options=scale_labels, key=f"stmt_{idx}", horizontal=True)
             responses[f"Q{idx:02}"] = scale_map[response]
         submitted = st.form_submit_button("제출하기")
 
@@ -129,13 +129,13 @@ with tab2:
             loadings = pd.DataFrame(
                 fa.loadings_,
                 index=[f"Q{idx+1}" for idx in range(len(df.columns))],
-                columns=["Factor1", "Factor2"]
+                columns=["Type1", "Type2"]
             )
 
-            st.write("📌 요인 부하 행렬:")
+            st.write("📌 유형형 부하 행렬:")
             st.dataframe(loadings)
 
-            st.write("📊 요인별 TPPP 평균 프로파일")
+            st.write("📊 유형별 TPPP 평균 프로파일")
             result = []
             for factor in loadings.columns:
                 scores = []
@@ -149,7 +149,7 @@ with tab2:
 
             fig, ax = plt.subplots()
             summary.T.plot(kind='bar', ax=ax)
-            ax.set_title("요인별 TPPP 영역 점수", fontproperties=font_prop)
+            ax.set_title("유형별 TPPP 영역 점수", fontproperties=font_prop)
             st.pyplot(fig)
         else:
             st.warning("최소 5명의 응답이 필요합니다.")
