@@ -66,18 +66,20 @@ with col1:
         key="sort1"
     )
 
-with col2:
-    st.subheader("🗂️ 최종 순위 정렬 (1~24위)")
-    flat = [item for group in bubble_lists for item in group]
-    final = sortables.sort_items(
-        flat,
-        "vertical",
-        False,
-        key="sort2"
-    )
+submitted = False
+if st.button("✅ 제출"):
+    submitted = True
 
-    if st.button("✅ 제출"):
-        st.success("정렬 완료! 아래에 순위를 다시 보여드립니다.")
+if submitted:
+    with col1:
         st.markdown("---")
+        st.subheader("📋 최종 순위 결과 (정렬된 순서)")
+        flat = [item for group in bubble_lists for item in group]
+        final = sortables.sort_items(
+            flat,
+            "vertical",
+            False,
+            key="sort2"
+        )
         for idx, item in enumerate(final, 1):
             st.markdown(f"**{idx}위**: {item}")
