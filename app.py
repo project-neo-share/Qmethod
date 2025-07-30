@@ -14,6 +14,8 @@ import seaborn as sns
 import networkx as nx
 
 st.set_page_config(page_title="Q-Method Analyzer", layout="wide")
+st.title("데이터센터 지속가능성 인식 조사")
+
 DATA_PATH = "responses.csv"
 # 사이드바 관리자 로그인 영역
 st.sidebar.subheader("🔐 관리자 로그인")
@@ -50,7 +52,7 @@ if st.session_state.authenticated:
         st.sidebar.info("ℹ️ 아직 저장된 응답 파일이 없습니다.")
         
 
-st.title("데이터센터 지속가능성 인식 조사")
+
 import matplotlib.font_manager as fm
 
 def get_korean_fontprop():
@@ -63,7 +65,31 @@ def get_korean_fontprop():
 # 사용 예시
 font_prop = get_korean_fontprop()
 
-# 사용 시점에 호출
+def push_to_github(local_file_path):
+    g = Github(st.secrets["github"]["token"])
+    repo = g.get_repo(st.secrets["github"]["repo"])
+    path_in_repo = st.secrets["github"]["path"]
+
+    # 현재 파일을 읽고 base64로 인코딩
+    with open(local_file_path, "rb") as file:
+        content = file.read()
+
+    try:
+        # 기존 파일 정보 가져오기 (SHA 필요)
+        contents = repo.get_contents(path_in_repo)
+        repo.update_file(
+            path=path_in_repo,
+            message=f"Update response.csv at {datetime.datetime.now().isoformat()}",
+            content=content,
+            sha=contents.sha
+        )
+    except Exception:
+        # 파일이 없으면 새로 생성
+        repo.create_file(
+            path=path_in_repo,
+            message=f"Create response.csv at {datetime.datetime.now().isoformat()}",
+            content=content
+        )
 
 with st.expander("📘 조사 개요", expanded=True):
     st.markdown("""
@@ -164,6 +190,7 @@ with tab1:
             df_all = df_new
         df_all.to_csv(DATA_PATH, index=False)
         st.success("응답이 저장되었습니다.")
+        push_to_github(DATA_PATH)
 
 with tab2:
     if os.path.exists(DATA_PATH):
