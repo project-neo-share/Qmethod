@@ -106,7 +106,7 @@ with tab1:
     responses = {}
 
     with st.form(key="likert_form"):
-        email = st.text_input("이메일을 입력해 주세요 (선택 사항)", key="email_input")
+        email = st.text_input("이메일을 입력해 주세요 (필수 사항)", key="email_input")
 
         for idx, stmt in enumerate(statements, 1):
             response = st.radio(
