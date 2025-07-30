@@ -120,7 +120,7 @@ with tab2:
     if os.path.exists(DATA_PATH):
 
         df = pd.read_csv(DATA_PATH)
-        st.subheader("📈 요인 분석 및 TPPP 영역별 프로파일링")
+        st.subheader("📈 유형 분석 및 TPPP 영역별 프로파일링")
         if len(df) >= 5:
             df_noise = df + np.random.normal(0, 0.001, df.shape)
             fa = FactorAnalyzer(n_factors=2, rotation='varimax')
@@ -132,7 +132,7 @@ with tab2:
                 columns=["Type1", "Type2"]
             )
 
-            st.write("📌 유형형 부하 행렬:")
+            st.write("📌 유형 부하 행렬:")
             st.dataframe(loadings)
 
             st.write("📊 유형별 TPPP 평균 프로파일")
