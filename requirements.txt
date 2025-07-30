@@ -5,3 +5,4 @@ matplotlib
 networkx
 factor_analyzer
 seaborn
+PyGithub
