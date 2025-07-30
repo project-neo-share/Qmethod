@@ -59,7 +59,7 @@ col1, col2 = st.columns([1, 2])
 with col1:
     st.subheader("그룹별 버블 정렬 (왼쪽)")
     bubble_lists = sortables.sort_items(
-        group_items,
+        items=group_items,  
         labels=group_labels,
         direction="horizontal",
         multi_containers=True,
