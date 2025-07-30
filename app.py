@@ -1,6 +1,7 @@
 ##################################################################
 # Author: Prof. Dr. SongheeKang (2025.07.31.)
 ##################################################################
+from github import Github
 import streamlit as st
 import pandas as pd
 import numpy as np
