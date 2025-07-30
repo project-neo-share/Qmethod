@@ -6,6 +6,9 @@ st.title("Q-Method 진술문 정렬 (버블 드래그 방식)")
 
 with st.expander("📘 조사 개요", expanded=True):
     st.markdown("""
+        본 조사는 데이터센터의 기술·입지·사람·거버넌스에 대한 사회적 수용성과 관련된 다양한 진술문에 대해, 귀하의 인식을 파악하고자 합니다. 
+        한국공학대학교 주관 학술 연구 목적으로 수행되는 본 조사는 조사지 자체의 익명성이 유지되며 응답자 고유성을 확인하기 위해 이메일을 수집 후 파기합니다. 
+        모든 섹션에 참여하시는 데 10분 이내로 소요되며, 참여해주신 분께는 약소하오나 소중한 시간을 내어주신 데 대한 감사의 의미로 자문 수당(10만원, 세전)을 별도로 송금해 드립니다.
         데이터센터는 인공지능, 클라우드, 디지털 산업 발전을 가능하게 하는 핵심 기반 시설입니다. 하지만 그와 동시에 막대한 전력을 소비하고, 물을 많이 사용하며, 입지 선정 과정에서 시민들과 갈등을 빚기도 합니다.
         동 연구에서는
         - 시민들은 데이터센터에 대해 어떤 생각을 가지고 있을까? 그
@@ -55,11 +58,14 @@ col1, col2 = st.columns([1, 2])
 with col1:
     st.subheader("왼쪽 그룹에서 드래그하여 정렬하세요")
     
+    group_keys = list(initial_groups.keys())
+    group_items = [initial_groups[key] for key in group_keys]
+
     bubble_lists = sortables.sort_items(
-        [initial_groups[group] for group in initial_groups],
+        items=group_items,
+        labels=group_keys,
         direction="horizontal",
         multi_containers=True,
-        labels=list(initial_groups.keys()),  
         key="bubble_input"
     )
 
