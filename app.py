@@ -6,6 +6,7 @@ import matplotlib.pyplot as plt
 import platform
 from factor_analyzer import FactorAnalyzer
 from sklearn.preprocessing import StandardScaler
+import seaborn as sns
 
 import networkx as nx
 
