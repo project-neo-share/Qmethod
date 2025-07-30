@@ -12,7 +12,41 @@ from sklearn.preprocessing import StandardScaler
 import seaborn as sns
 
 import networkx as nx
+DATA_PATH = "responses.csv"
+# 사이드바 관리자 로그인 영역
+st.sidebar.subheader("🔐 관리자 로그인")
 
+# 세션 상태 초기화
+if "authenticated" not in st.session_state:
+    st.session_state.authenticated = False
+
+# 비밀번호 입력 받기
+if not st.session_state.authenticated:
+    input_password = st.sidebar.text_input("비밀번호 입력", type="password")
+    if st.sidebar.button("로그인"):
+        if input_password == st.secrets["admin"]["password"]:
+            st.session_state.authenticated = True
+            st.sidebar.success("인증 성공!")
+        else:
+            st.sidebar.error("비밀번호가 틀렸습니다.")
+else:
+    # 인증된 경우 다운로드 버튼 표시
+    st.sidebar.success("관리자 모드 활성화됨")
+
+    if os.path.exists(DATA_PATH):
+        try:
+            df_download = pd.read_csv(DATA_PATH)
+            st.sidebar.download_button(
+                label="📥 응답 데이터 다운로드",
+                data=df_download.to_csv(index=False).encode("utf-8-sig"),
+                file_name="responses.csv",
+                mime="text/csv"
+            )
+        except pd.errors.EmptyDataError:
+            st.sidebar.warning("⚠️ 저장된 응답 파일이 비어 있습니다.")
+    else:
+        st.sidebar.info("ℹ️ 아직 저장된 응답 파일이 없습니다.")
+        
 st.set_page_config(page_title="Q-Method", layout="wide")
 st.title("데이터센터 지속가능성 인식 조사")
 import matplotlib.font_manager as fm
@@ -54,7 +88,7 @@ with st.expander("🧩 섹션 설명", expanded=True):
       4) 과정 (Process): 이 영역은 데이터센터가 어떤 절차와 방식으로 결정·운영되었는지를 시민들이 어떻게 평가하는지를 다룹니다. 예를 들어 정보 공개 시점, 환경영향평가의 신뢰도, 기업–지자체 협력 여부, 사후 모니터링의 유무 등이 포함됩니다. 당신은 결정 과정의 투명성과 참여 방식이 시민의 신뢰와 수용에 어떤 영향을 줄 수 있다고 생각하십니까?<br>
     """, unsafe_allow_html=True)
 
-DATA_PATH = "responses.csv"
+
 
 tab1, tab2, tab3 = st.tabs(["✍️ 설문 응답", "📈 유형 분석", "🔁 인지흐름 분석"])
 
