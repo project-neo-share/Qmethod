@@ -56,34 +56,27 @@ initial_groups = {
 col1, col2 = st.columns([1, 2])
 
 with col1:
-    st.subheader("왼쪽 그룹에서 드래그하여 정렬하세요")
-    
-    group_keys = list(initial_groups.keys())
-    group_items = [initial_groups[key] for key in group_keys]
-
+    st.subheader("그룹별 버블 정렬 (왼쪽)")
     bubble_lists = sortables.sort_items(
-        items=group_items,
-        labels=group_keys,
+        group_items,
+        labels=group_labels,
         direction="horizontal",
         multi_containers=True,
-        key="bubble_input"
+        key="input_bubbles"
     )
 
-# 오른쪽: 최종 순위 정렬
 with col2:
-    st.subheader("오른쪽 영역에서 최종 순위를 정렬하세요")
-
-    all_items = [item for sublist in bubble_lists for item in sublist]
-
-    ranked_list = sortables.sort_items(
-        [all_items],
+    st.subheader("최종 순위 정렬 (오른쪽)")
+    flat_list = [item for group in bubble_lists for item in group]
+    final_ranking = sortables.sort_items(
+        [flat_list],
+        labels=["순위 영역 (1~24위)"],
         direction="vertical",
         multi_containers=False,
-        labels=["순위 영역 (1위 ~ 24위)"], 
-        key="final_ranking"
+        key="ranked_bubbles"
     )
 
     if st.button("제출"):
-        st.success("정렬이 완료되었습니다. 아래는 당신의 순위입니다:")
-        for idx, item in enumerate(ranked_list[0], 1):
+        st.success("정렬 완료")
+        for idx, item in enumerate(final_ranking[0], 1):
             st.write(f"{idx}위: 진술문 {item}")
