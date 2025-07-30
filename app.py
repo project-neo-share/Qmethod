@@ -12,6 +12,8 @@ from sklearn.preprocessing import StandardScaler
 import seaborn as sns
 
 import networkx as nx
+
+st.set_page_config(page_title="Q-Method Analyzer", layout="wide")
 DATA_PATH = "responses.csv"
 # 사이드바 관리자 로그인 영역
 st.sidebar.subheader("🔐 관리자 로그인")
@@ -47,7 +49,7 @@ else:
     else:
         st.sidebar.info("ℹ️ 아직 저장된 응답 파일이 없습니다.")
         
-st.set_page_config(page_title="Q-Method", layout="wide")
+
 st.title("데이터센터 지속가능성 인식 조사")
 import matplotlib.font_manager as fm
 
