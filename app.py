@@ -94,26 +94,36 @@ with tabs[0]:
 with tabs[1]:
     if os.path.exists(DATA_PATH):
         df = pd.read_csv(DATA_PATH)
-        st.subheader("📊 응답자 요인분석 (PCA 기반)")
+        st.subheader("🧠 PCQ 요인 분석")
+        st.write(f"총 응답 수: {len(df)}명")
         if len(df) >= 5:
-            X = StandardScaler().fit_transform(df)
-            pca = PCA(n_components=2)
-            comps = pca.fit_transform(X)
+            st.write("✅ 응답자 간 상관행렬 기반 요인 추출 중...")
+            corr = df.T.corr()
+            fa = FactorAnalyzer(rotation='varimax')
+            fa.fit(corr)
+            ev, _ = fa.get_eigenvalues()
 
-            st.write("요인 점수:")
-            st.dataframe(pd.DataFrame(comps, columns=["요인1", "요인2"]))
+            st.write("📌 고유값:")
+            st.bar_chart(ev)
 
-            fig, ax = plt.subplots()
-            ax.scatter(comps[:, 0], comps[:, 1], color='green')
-            for i, (x, y) in enumerate(comps):
-                ax.text(x + 0.02, y + 0.02, f"R{i+1}", fontsize=8)
-            ax.set_title("응답자 요인공간 (PCA)")
-            st.pyplot(fig)
+            n_factors = st.slider("추출할 요인 수", 1, min(6, len(df)-1), 2)
+            fa = FactorAnalyzer(n_factors=n_factors, rotation='varimax')
+            fa.fit(corr)
+            loadings = pd.DataFrame(fa.loadings_, columns=[f"요인{i+1}" for i in range(n_factors)])
+            loadings.index = [f"응답자{i+1}" for i in range(len(df))]
+
+            st.write("📈 요인 부하 행렬 (응답자 기준):")
+            st.dataframe(loadings)
+
+            st.write("📌 요인별 대표 응답자:")
+            for col in loadings.columns:
+                top = loadings[col].abs().idxmax()
+                st.markdown(f"- **{col}**: 대표 응답자 → {top}")
         else:
             st.warning("요인 분석을 위해 최소 5명의 응답이 필요합니다.")
     else:
         st.info("아직 저장된 응답이 없습니다.")
-
+        
 with tabs[2]:
     if os.path.exists(DATA_PATH):
         df = pd.read_csv(DATA_PATH)
