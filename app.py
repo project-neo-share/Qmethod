@@ -148,7 +148,7 @@ with tab2:
 
             fig, ax = plt.subplots()
             summary.T.plot(kind='bar', ax=ax)
-            ax.set_title("요인별 TPPP 영역 점수, fontproperties=font_prop")
+            ax.set_title("요인별 TPPP 영역 점수", fontproperties=font_prop)
             st.pyplot(fig)
         else:
             st.warning("최소 5명의 응답이 필요합니다.")
@@ -176,10 +176,10 @@ with tab3:
             plt.figure(figsize=(14, 10))
             node_colors = [dict(기술='skyblue', 사람='lightgreen', 장소='salmon', 과정='plum')[G.nodes[n]['section']] for n in G.nodes]
             nx.draw_networkx_nodes(G, pos, node_color=node_colors, node_size=700)
-            nx.draw_networkx_labels(G, pos, labels=nx.get_node_attributes(G, 'label'), font_size=8)
+            nx.draw_networkx_labels(G, pos, labels=nx.get_node_attributes(G, 'label'), font_size=8, font_family=font_prop.get_name())
             nx.draw_networkx_edges(G, pos, width=1)
             edge_labels = {(u, v): f"{d['weight']}" for u, v, d in G.edges(data=True)}
-            nx.draw_networkx_edge_labels(G, pos, edge_labels=edge_labels, font_size=7)
+            nx.draw_networkx_edge_labels(G, pos, edge_labels=edge_labels, font_size=7, font_family=font_prop.get_name())
             plt.title("진술 간 상관 기반 TPPP 피드백 구조", fontproperties=font_prop)
             st.pyplot(plt)
         else:
