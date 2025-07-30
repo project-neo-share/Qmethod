@@ -21,6 +21,7 @@ def set_custom_korean_font():
         plt.rcParams['axes.unicode_minus'] = False
     else:
         plt.rcParams['font.family'] = 'DejaVu Sans'
+    plt.rcParams["axes.unicode_minus"] = False
 
 # 사용 시점에 호출
 
@@ -116,6 +117,7 @@ with tab1:
 
 with tab2:
     if os.path.exists(DATA_PATH):
+        set_custom_korean_font()
         df = pd.read_csv(DATA_PATH)
         st.subheader("📈 요인 분석 및 TPPP 영역별 프로파일링")
         if len(df) >= 5:
@@ -153,6 +155,7 @@ with tab2:
 
 with tab3:
     if os.path.exists(DATA_PATH):
+        set_custom_korean_font()
         df = pd.read_csv(DATA_PATH)
         st.subheader("🔁 TPPP 블록 간 피드백 네트워크")
         if len(df) >= 5:
