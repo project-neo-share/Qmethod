@@ -11,22 +11,16 @@ import networkx as nx
 
 st.set_page_config(page_title="Q-Method", layout="wide")
 st.title("데이터센터 지속가능성 인식 조사")
-def set_korean_font():
-    system = platform.system()
-    if system == "Windows":
-        plt.rcParams['font.family'] = 'Malgun Gothic'
-    elif system == "Darwin":  # macOS
-        plt.rcParams['font.family'] = 'AppleGothic'
-    else:  # Linux (Streamlit Cloud 포함)
-        # 기본 폰트 없을 경우 대비
-        import matplotlib.font_manager as fm
-        font_paths = [f.fname for f in fm.fontManager.ttflist if 'Nanum' in f.name or 'Malgun' in f.name]
-        if font_paths:
-            plt.rcParams['font.family'] = fm.FontProperties(fname=font_paths[0]).get_name()
-        else:
-            plt.rcParams['font.family'] = 'DejaVu Sans'  # fallback
+import matplotlib.font_manager as fm
 
-    plt.rcParams['axes.unicode_minus'] = False  # 마이너스 깨짐 방지
+def set_custom_korean_font():
+    font_path = "fonts/NanumGothic.ttf"  # 상대 경로
+    if os.path.exists(font_path):
+        font_prop = fm.FontProperties(fname=font_path)
+        plt.rcParams['font.family'] = font_prop.get_name()
+        plt.rcParams['axes.unicode_minus'] = False
+    else:
+        plt.rcParams['font.family'] = 'DejaVu Sans'
 
 # 사용 시점에 호출
 
