@@ -1,5 +1,5 @@
 import streamlit as st
-import streamlit_sortables as sortables
+from streamlit_drag_and_drop_lists import drag_and_drop_lists
 
 st.set_page_config(page_title="Q-Method 버블 정렬", layout="wide")
 st.title("Q-Method 진술문 정렬 (버블 드래그 방식)")
