@@ -153,36 +153,64 @@ with tab2:
         else:
             st.warning("최소 5명의 응답이 필요합니다.")
 
+tab3 = st.container()
+
 with tab3:
     if os.path.exists(DATA_PATH):
         df = pd.read_csv(DATA_PATH)
         st.subheader("🔁 TPPP 블록 간 피드백 네트워크")
         if len(df) >= 5:
-    
+            # TPPP 정의
+            section_map = {
+                "기술": range(0, 6),
+                "사람": range(6, 12),
+                "장소": range(12, 18),
+                "과정": range(18, 24)
+            }
+
+            # 상관행렬 계산
             corr = df.corr()
+            tp_labels = list(section_map.keys())
+            block_corr = pd.DataFrame(index=tp_labels, columns=tp_labels, dtype=float)
+
+            for sec1, idxs1 in section_map.items():
+                for sec2, idxs2 in section_map.items():
+                    sub_corrs = [corr.iloc[i, j] for i in idxs1 for j in idxs2 if i != j]
+                    block_corr.loc[sec1, sec2] = np.mean(sub_corrs)
+
+            # 네트워크 그래프 생성
             G = nx.Graph()
+            for sec in tp_labels:
+                G.add_node(sec)
 
-            for i, stmt in enumerate(statements):
-                section = next(s for s, r in section_map.items() if i in r)
-                G.add_node(f"Q{i+1}", label=stmt, section=section)
+            for i in tp_labels:
+                for j in tp_labels:
+                    if i != j:
+                        weight = block_corr.loc[i, j]
+                        if abs(weight) > 0.5:
+                            G.add_edge(i, j, weight=round(weight, 2))
 
-            for i in range(len(df.columns)):
-                for j in range(i+1, len(df.columns)):
-                    weight = corr.iloc[i, j]
-                    if abs(weight) > 0.6:
-                        G.add_edge(f"Q{i+1}", f"Q{j+1}", weight=round(weight, 2))
-
-            pos = nx.spring_layout(G, seed=42)
-            plt.figure(figsize=(14, 10))
-            node_colors = [dict(기술='skyblue', 사람='lightgreen', 장소='salmon', 과정='plum')[G.nodes[n]['section']] for n in G.nodes]
-            nx.draw_networkx_nodes(G, pos, node_color=node_colors, node_size=700)
-            nx.draw_networkx_labels(G, pos, labels=nx.get_node_attributes(G, 'label'), font_size=8, font_family=font_prop.get_name())
-            nx.draw_networkx_edges(G, pos, width=1)
-            edge_labels = {(u, v): f"{d['weight']}" for u, v, d in G.edges(data=True)}
-            nx.draw_networkx_edge_labels(G, pos, edge_labels=edge_labels, font_size=7, font_family=font_prop.get_name())
-            plt.title("진술 간 상관 기반 TPPP 피드백 구조", fontproperties=font_prop)
+            pos = nx.circular_layout(G)
+            plt.figure(figsize=(6, 6))
+            nx.draw_networkx_nodes(G, pos, node_color='lightcoral', node_size=2000)
+            nx.draw_networkx_labels(G, pos, font_size=12, font_weight='bold', font_family=font_prop.get_name())
+            nx.draw_networkx_edges(G, pos, width=2)
+            nx.draw_networkx_edge_labels(G, pos,
+                edge_labels={(u, v): f"{d['weight']}" for u, v, d in G.edges(data=True)},
+                font_size=10, font_family=font_prop.get_name())
+            plt.title("TPPP 블록 간 평균 상관 기반 피드백 네트워크", fontproperties=font_prop)
             st.pyplot(plt)
+
+            # 히트맵 출력
+            st.subheader("📊 TPPP 블록 간 상관 히트맵")
+            fig2, ax2 = plt.subplots()
+            sns.heatmap(block_corr.astype(float), annot=True, cmap='coolwarm', vmin=-1, vmax=1,
+                        fmt=".2f", linewidths=0.5, ax=ax2, cbar=True)
+            ax2.set_title("TPPP 블록 간 상관 히트맵", fontproperties=font_prop)
+            ax2.set_xticklabels(ax2.get_xticklabels(), fontproperties=font_prop)
+            ax2.set_yticklabels(ax2.get_yticklabels(), fontproperties=font_prop)
+            st.pyplot(fig2)
         else:
-            st.warning("시각화를 위해 최소 5명의 응답이 필요합니다.")
+            st.warning("분석을 위해 최소 5명의 응답이 필요합니다.")
     else:
         st.info("응답 데이터가 없습니다.")
