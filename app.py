@@ -82,10 +82,10 @@ statements = [
 ]
 
 section_map = {
-    "기술": range(0, 6),
-    "사람": range(6, 12),
-    "장소": range(12, 18),
-    "과정": range(18, 24)
+    "Technology": range(0, 6),
+    "People": range(6, 12),
+    "Place": range(12, 18),
+    "Process": range(18, 24)
 }
 
 scale_map = {
