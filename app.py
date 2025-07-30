@@ -11,8 +11,9 @@ with st.expander("📘 조사 개요", expanded=True):
         모든 섹션에 참여하시는 데 10분 이내로 소요되며, 참여해주신 분께는 약소하오나 소중한 시간을 내어주신 데 대한 감사의 의미로 자문 수당(10만원, 세전)을 별도로 송금해 드립니다.
         데이터센터는 인공지능, 클라우드, 디지털 산업 발전을 가능하게 하는 핵심 기반 시설입니다. 하지만 그와 동시에 막대한 전력을 소비하고, 물을 많이 사용하며, 입지 선정 과정에서 시민들과 갈등을 빚기도 합니다.
         동 연구에서는
-        - 시민들은 데이터센터에 대해 어떤 생각을 가지고 있을까? 그
-        - 리고 그 판단은 어떤 가치나 우선순위에 따라 달라질까? 를 알아보기 위한 목적을 가지고 설문조사를 시행하고 있습니다.
+        - 시민들은 데이터센터에 대해 어떤 생각을 가지고 있을까? 
+        - 그 판단은 어떤 가치나 우선순위에 따라 달라질까? 
+        를 알아보기 위한 목적을 가지고 설문조사를 시행하고 있습니다.
         설문은 총 24개의 문장을 제시하며, 이 문장들은 사람들이 데이터센터에 대해 흔히 하는 주장이나 의견을 정리한 것입니다.
         """)
 with st.expander("🧩 Q-Sort 방식 안내 및 각 섹션 설명", expanded=True):
@@ -54,30 +55,28 @@ group_items = [
                 "6. 시민들은 데이터센터가 완공된 이후에도 모니터링과 피드백이 있어야 신뢰를 유지할 수 있다고 생각할 수 있다."]
 ]
 
-col1, col2 = st.columns([1, 1])
+col1, col2 = st.columns([1, 2])
 
 with col1:
-    st.subheader("🧱 그룹별 진술문 정렬")
-    sorted_groups = sortables.sort_items(
-        items=group_items,
-        labels=group_labels,
-        direction="horizontal",
-        multi_containers=True,
-        key="group_sort"
+    st.subheader("왼쪽 그룹별 정렬")
+    bubble_lists = sortables.sort_items(
+        [group_items[0], group_items[1], group_items[2], group_items[3]],
+        "horizontal",  # direction
+        True,          # multi_containers
+        key="sort1"
     )
 
 with col2:
-    st.subheader("🗂️ 최종 순위 정렬 (1위 ~ 24위)")
-    flat_list = [item for group in sorted_groups for item in group]
-    ranked = sortables.sort_items(
-        items=[flat_list],
-        labels=["최종 순위 영역"],
-        direction="vertical",
-        multi_containers=False,
-        key="final_sort"
+    st.subheader("최종 순위 정렬 (1~24위)")
+    flat = [item for group in bubble_lists for item in group]
+    final = sortables.sort_items(
+        [flat],
+        "vertical",
+        False,
+        key="sort2"
     )
 
-    if st.button("✅ 제출"):
-        st.success("정렬 완료! 결과:")
-        for idx, item in enumerate(ranked[0], 1):
-            st.write(f"{idx}위: {item}")
+if st.button("✅ 제출"):
+    st.success("정렬 완료! 결과:")
+    for idx, item in enumerate(final[0], 1):
+        st.write(f"{idx}위: 진술문 {item}")
