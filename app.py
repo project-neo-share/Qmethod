@@ -6,8 +6,8 @@ from sklearn.decomposition import PCA
 from sklearn.preprocessing import StandardScaler
 import matplotlib.pyplot as plt
 
-st.set_page_config(page_title="Q-Method 버블 정렬", layout="wide")
-st.title("Q-Method 진술문 정렬 (버블 드래그 방식)")
+st.set_page_config(page_title="데이터센터 지속가능성 인식 조사", layout="wide")
+st.title("Q-Method 리커트 설문")
 
 with st.expander("📘 조사 개요", expanded=True):
     st.markdown("""
