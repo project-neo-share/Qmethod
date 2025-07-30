@@ -75,34 +75,30 @@ with col1:
         [{"label": label, "items": items} for label, items in zip(group_labels, group_items)],
         "horizontal",
         True,
-        item_style=item_style,
-        label_style=label_style,
         key="sort1"
     )
 
-submitted = False
+# 제출 버튼 클릭 시 결과 출력
 if st.button("✅ 제출"):
-    submitted = True
-
-if submitted:
     with col1:
         st.markdown("---")
-        st.subheader("📋 최종 순위 결과")
+        st.subheader("📋 최종 순위 결과 (제출 후)")
+
+        # 그룹별 정렬된 항목을 단일 리스트로 변환
         flat = [item for group in bubble_lists for item in group]
-        _, sorted_list = sortables.sort_items(
+
+        # 정렬
+        _, sorted_items = sortables.sort_items(
             flat,
             "vertical",
             False,
-            item_style=item_style,
             key="sort2"
         )
-        meta, sorted_items = sortables.sort_items(
-            flat,
-            "vertical",
-            False,
-            item_style=item_style,
-            key="sort2"
-        )
-        
+
+        # 시각적으로 민트색 박스 스타일로 출력
         for idx, item in enumerate(sorted_items, 1):
-            st.markdown(f"**{idx}위**: {item}")
+            st.markdown(f"""
+                <div style="background-color:#aaf0d1; padding:8px 12px; border-radius:8px; margin-bottom:6px">
+                    <b>{idx}위</b>: 진술문 {item}
+                </div>
+            """, unsafe_allow_html=True)
