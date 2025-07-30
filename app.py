@@ -1,6 +1,10 @@
-##################################################################
-# Author: Prof. Dr. SongheeKang (2025.07.31.)
-##################################################################
+"""
+Q-Method Streamlit Application
+
+Author      : Prof. Dr. Songhee Kang  
+Last Update : 2025-07-31  
+Description : Likert-based Q-Method survey tool with GitHub push integration
+"""
 from github import Github
 import streamlit as st
 import pandas as pd
@@ -11,7 +15,7 @@ import platform
 from factor_analyzer import FactorAnalyzer
 from sklearn.preprocessing import StandardScaler
 import seaborn as sns
-
+import datetime
 import networkx as nx
 
 st.set_page_config(page_title="Q-Method Analyzer", layout="wide")
@@ -53,7 +57,6 @@ if st.session_state.authenticated:
         st.sidebar.info("ℹ️ 아직 저장된 응답 파일이 없습니다.")
         
 
-
 import matplotlib.font_manager as fm
 
 def get_korean_fontprop():
@@ -62,8 +65,6 @@ def get_korean_fontprop():
         return fm.FontProperties(fname=font_path)
     else:
         return fm.FontProperties()  # fallback
-
-# 사용 예시
 font_prop = get_korean_fontprop()
 
 def push_to_github(local_file_path):
