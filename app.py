@@ -70,7 +70,7 @@ with col2:
     st.subheader("🗂️ 최종 순위 정렬 (1~24위)")
     flat = [item for group in bubble_lists for item in group]
     final = sortables.sort_items(
-        [flat],
+        flat,                
         "vertical",
         False,
         key="sort2"
