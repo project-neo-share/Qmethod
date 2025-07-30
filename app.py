@@ -39,7 +39,7 @@ label_style = {
     "fontWeight": "bold",
     "padding": "5px"
 }
-group_labels = ["과정(Process)", "장소(Place)",,"사람(People)", "기술(Technology)"]
+group_labels = ["과정(Process)", "장소(Place)","사람(People)", "기술(Technology)"]
 group_items = [
             ["(과정)시민들은 데이터센터 정보가 초기에 투명하게 공개되면 신뢰할 수 있다고 느낄 수 있다.",
                 "(과정)시민들은 환경영향평가 결과가 수용 여부 판단에 중요하다고 생각할 수 있다.", 
