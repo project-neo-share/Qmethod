@@ -52,7 +52,7 @@ with st.expander("🧩 섹션 설명", expanded=True):
 
 DATA_PATH = "responses_rank_full.csv"
 
-tab1, tab2, tab3 = st.tabs(["✍️ 설문 응답", "📈 요인 분석", "🔁 섹션 간 관계"])
+tab1, tab2, tab3 = st.tabs(["✍️ 설문 응답", "📈 요인 분석", "🔁 인지흐름 분석석"])
 
 statements = [
     "데이터센터는 재생에너지를 사용할 때 환경 책임성을 갖춘 시설로 평가받을 수 있다.",
@@ -157,8 +157,15 @@ with tab2:
 with tab3:
     if os.path.exists(DATA_PATH):
         df = pd.read_csv(DATA_PATH)
-        st.subheader("📊 TPPP 블록 간 상관 히트맵")
+        st.subheader("🧠 TPPP 인지 흐름 및 피드백 구조 요약")
+
         if len(df) >= 5:
+            section_map = {
+                "기술": range(0, 6),
+                "사람": range(6, 12),
+                "장소": range(12, 18),
+                "과정": range(18, 24)
+            }
 
             # 상관행렬 계산
             corr = df.corr()
@@ -170,8 +177,40 @@ with tab3:
                     sub_corrs = [corr.iloc[i, j] for i in idxs1 for j in idxs2 if i != j]
                     block_corr.loc[sec1, sec2] = np.mean(sub_corrs)
 
-            # 히트맵 출력
-            
+            # DiGraph로 방향성 피드백 구조 구축
+            DG = nx.DiGraph()
+            for i in tp_labels:
+                DG.add_node(i)
+
+            for i in tp_labels:
+                for j in tp_labels:
+                    if i != j:
+                        weight = block_corr.loc[i, j]
+                        if abs(weight) > 0.5:
+                            DG.add_edge(i, j, weight=round(weight, 2))
+
+            st.markdown("### 🔄 TPPP 인지 흐름 방향 그래프 (DiGraph)")
+            pos = nx.circular_layout(DG)
+            plt.figure(figsize=(6, 6))
+            nx.draw_networkx_nodes(DG, pos, node_color='skyblue', node_size=2000)
+            nx.draw_networkx_labels(DG, pos, font_size=12, font_family=font_prop.get_name())
+            nx.draw_networkx_edges(DG, pos, width=2, arrows=True, arrowstyle='-|>')
+            edge_labels = {(u, v): f"{d['weight']}" for u, v, d in DG.edges(data=True)}
+            nx.draw_networkx_edge_labels(DG, pos, edge_labels=edge_labels, font_size=10, font_family=font_prop.get_name())
+            plt.title("TPPP 영역 간 인지 흐름 구조 (DiGraph)", fontproperties=font_prop)
+            st.pyplot(plt)
+
+            # 루프 탐지
+            st.markdown("### 🔁 피드백 루프 구조 감지 결과")
+            cycles = list(nx.simple_cycles(DG))
+            if cycles:
+                for i, loop in enumerate(cycles, 1):
+                    st.markdown(f"- 루프 {i}: {' → '.join(loop)} → {loop[0]}")
+            else:
+                st.info("루프(자기강화 피드백 구조)는 발견되지 않았습니다.")
+
+            # 히트맵
+            st.markdown("### 📊 TPPP 상관 행렬 히트맵")
             fig2, ax2 = plt.subplots()
             sns.heatmap(block_corr.astype(float), annot=True, cmap='coolwarm', vmin=-1, vmax=1,
                         fmt=".2f", linewidths=0.5, ax=ax2, cbar=True)
@@ -180,6 +219,7 @@ with tab3:
             ax2.set_yticklabels(ax2.get_yticklabels(), fontproperties=font_prop)
             st.pyplot(fig2)
         else:
-            st.warning("분석을 위해 최소 5명의 응답이 필요합니다.")
+            st.warning("최소 5명의 응답이 필요합니다.")
     else:
         st.info("응답 데이터가 없습니다.")
+
