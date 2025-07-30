@@ -1,5 +1,5 @@
 import streamlit as st
-from streamlit_drag_and_drop_lists import drag_and_drop_lists
+import streamlit_sortables as sortables
 
 st.set_page_config(page_title="Q-Method 버블 정렬", layout="wide")
 st.title("Q-Method 진술문 정렬 (버블 드래그 방식)")
@@ -56,18 +56,27 @@ initial_data = [
 col1, col2 = st.columns([1, 1])
 
 with col1:
-    st.subheader("🧱 그룹별 진술문")
-    result = drag_and_drop_lists(initial_data, key="init_qsort")
-
-with col2:
-    st.subheader("🗂️ 최종 순위 정렬")
-    flat = [item for g in result if isinstance(g, dict) for item in g.get("items", [])]
-    final = drag_and_drop_lists(
-        [{"header": "순위 영역 (1~24위)", "items": flat}],
-        key="final_qsort"
+    st.subheader("🧱 그룹별 진술문 정렬")
+    sorted_groups = sortables.sort_items(
+        items=group_items,
+        labels=group_labels,
+        direction="horizontal",
+        multi_containers=True,
+        key="group_sort"
     )
 
-if st.button("✅ 제출"):
-    st.success("정렬 완료! 결과:")
-    for idx, item in enumerate(final[0]["items"], 1):
-        st.write(f"{idx}위: 진술문 {item}")
+with col2:
+    st.subheader("🗂️ 최종 순위 정렬 (1위 ~ 24위)")
+    flat_list = [item for group in sorted_groups for item in group]
+    ranked = sortables.sort_items(
+        items=[flat_list],
+        labels=["최종 순위 영역"],
+        direction="vertical",
+        multi_containers=False,
+        key="final_sort"
+    )
+
+    if st.button("✅ 제출"):
+        st.success("정렬 완료! 결과:")
+        for idx, item in enumerate(ranked[0], 1):
+            st.write(f"{idx}위: {item}")
