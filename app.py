@@ -128,7 +128,7 @@ with tab2:
             loadings = pd.DataFrame(
                 fa.loadings_,
                 index=[f"Q{idx+1}" for idx in range(len(df.columns))],
-                columns=["요인1", "요인2"]
+                columns=["Factor1", "Factor2"]
             )
 
             st.write("📌 요인 부하 행렬:")
