@@ -11,6 +11,24 @@ import networkx as nx
 
 st.set_page_config(page_title="Q-Method", layout="wide")
 st.title("데이터센터 지속가능성 인식 조사")
+def set_korean_font():
+    system = platform.system()
+    if system == "Windows":
+        plt.rcParams['font.family'] = 'Malgun Gothic'
+    elif system == "Darwin":  # macOS
+        plt.rcParams['font.family'] = 'AppleGothic'
+    else:  # Linux (Streamlit Cloud 포함)
+        # 기본 폰트 없을 경우 대비
+        import matplotlib.font_manager as fm
+        font_paths = [f.fname for f in fm.fontManager.ttflist if 'Nanum' in f.name or 'Malgun' in f.name]
+        if font_paths:
+            plt.rcParams['font.family'] = fm.FontProperties(fname=font_paths[0]).get_name()
+        else:
+            plt.rcParams['font.family'] = 'DejaVu Sans'  # fallback
+
+    plt.rcParams['axes.unicode_minus'] = False  # 마이너스 깨짐 방지
+
+# 사용 시점에 호출
 
 with st.expander("📘 조사 개요", expanded=True):
     st.markdown("""
@@ -158,9 +176,7 @@ with tabs[2]:
                     if abs(weight) > 0.6:  # 강한 상관만 피드백 연결로 간주
                         G.add_edge(f"Q{i+1}", f"Q{j+1}", weight=round(weight, 2))
 
-            import matplotlib
-            plt.rcParams['font.family'] = 'Malgun Gothic'  # 한글 출력 설정
-            plt.rcParams['axes.unicode_minus'] = False
+            set_korean_font()
             
             pos = nx.spring_layout(G, seed=42)
             plt.figure(figsize=(13, 10))
