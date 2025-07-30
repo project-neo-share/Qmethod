@@ -141,7 +141,7 @@ with tabs[1]:
 with tabs[2]:
     if os.path.exists(DATA_PATH):
         df = pd.read_csv(DATA_PATH)
-        st.subheader("🔁 진술 간 피드백 구조 (상관 네트워크)")
+        st.subheader("🔁 cross-statement feedback network")
 
         if len(df) >= 5:
             corr = df.corr()  # 진술 간 상관계수 행렬
@@ -167,7 +167,7 @@ with tabs[2]:
             nx.draw_networkx_edge_labels(G, pos,
                 edge_labels={(u, v): f"{d['weight']}" for u, v, d in edges},
                 font_size=7)
-            plt.title("진술 간 상관 기반 피드백 네트워크")
+            plt.title("cross-statement correlation feedback network ")
             st.pyplot(plt)
         else:
             st.warning("피드백 구조 시각화를 위해 최소 5명의 응답이 필요합니다.")
