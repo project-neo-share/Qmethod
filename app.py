@@ -157,7 +157,7 @@ with tab2:
 with tab3:
     if os.path.exists(DATA_PATH):
         df = pd.read_csv(DATA_PATH)
-        st.subheader("🔁 TPPP 섹션 간 상관관계")
+        st.subheader("📊 TPPP 블록 간 상관 히트맵")
         if len(df) >= 5:
 
             # 상관행렬 계산
@@ -171,7 +171,7 @@ with tab3:
                     block_corr.loc[sec1, sec2] = np.mean(sub_corrs)
 
             # 히트맵 출력
-            st.subheader("📊 TPPP 블록 간 상관 히트맵")
+            
             fig2, ax2 = plt.subplots()
             sns.heatmap(block_corr.astype(float), annot=True, cmap='coolwarm', vmin=-1, vmax=1,
                         fmt=".2f", linewidths=0.5, ax=ax2, cbar=True)
