@@ -1,3 +1,6 @@
+##################################################################
+# Author: Prof. Dr. SongheeKang (2025.07.31.)
+##################################################################
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -100,10 +103,19 @@ scale_labels = list(scale_map.keys())
 with tab1:
     st.subheader("✍️ 설문에 응답해 주세요")
     responses = {}
+
     with st.form(key="likert_form"):
+        email = st.text_input("이메일을 입력해 주세요 (선택 사항)", key="email_input")
+
         for idx, stmt in enumerate(statements, 1):
-            response = st.radio(f"{idx}. {stmt}", options=scale_labels, key=f"stmt_{idx}", horizontal=True)
+            response = st.radio(
+                f"{idx}. {stmt}", options=scale_labels, key=f"stmt_{idx}", horizontal=True
+            )
             responses[f"Q{idx:02}"] = scale_map[response]
+
+        # 이메일도 응답에 추가
+        responses["email"] = email.strip()
+
         submitted = st.form_submit_button("제출하기")
 
     if submitted:
