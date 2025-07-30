@@ -95,40 +95,44 @@ with tabs[0]:
 with tabs[1]:
     if os.path.exists(DATA_PATH):
         df = pd.read_csv(DATA_PATH)
-        st.subheader("🧠 PCQ 요인 분석 (진술 간 상관 기반)")
+        st.subheader("🧠 진짜 PCQ 요인 분석 (안전 처리 포함)")
         st.write(f"총 응답 수: {len(df)}명")
 
         if len(df) >= 5:
             st.write("✅ 진술 간 상관행렬 기반 요인 추출 중...")
 
-            # 진술 간 상관행렬 (응답자 × 진술 → 진술 × 진술)
-            corr = df.corr()
+            # 방법 3: 작은 노이즈 추가 (Singular 방지)
+            df_noise = df + np.random.normal(0, 0.001, df.shape)
 
-            # 요인 분석
-            fa = FactorAnalyzer(rotation='varimax')
-            fa.fit(df)  # 원 데이터 사용 (아래에서 eigenvalue 추출)
-            ev, _ = fa.get_eigenvalues()
+            # 상관행렬 확인 및 정칙성 검사
+            corr = df_noise.corr()
+            if np.linalg.matrix_rank(corr) < corr.shape[0]:
+                st.error("⚠️ 상관행렬이 특이(singular)합니다. 응답 수를 늘려주세요.")
+            else:
+                fa = FactorAnalyzer(rotation='varimax')
+                fa.fit(df_noise)
+                ev, _ = fa.get_eigenvalues()
 
-            st.write("📌 고유값 (Eigenvalues):")
-            st.bar_chart(ev)
+                st.write("📌 고유값 (Eigenvalues):")
+                st.bar_chart(ev)
 
-            n_factors = st.slider("추출할 요인 수", 1, min(6, len(df.columns)-1), 2)
+                n_factors = st.slider("추출할 요인 수", 1, min(6, len(df.columns)-1), 2)
 
-            fa = FactorAnalyzer(n_factors=n_factors, rotation='varimax')
-            fa.fit(df)
-            loadings = pd.DataFrame(
-                fa.loadings_,
-                index=[f"Q{idx+1}" for idx in range(len(df.columns))],
-                columns=[f"요인{i+1}" for i in range(n_factors)]
-            )
+                fa = FactorAnalyzer(n_factors=n_factors, rotation='varimax')
+                fa.fit(df_noise)
+                loadings = pd.DataFrame(
+                    fa.loadings_,
+                    index=[f"Q{idx+1}" for idx in range(len(df.columns))],
+                    columns=[f"요인{i+1}" for i in range(n_factors)]
+                )
 
-            st.write("📈 요인 부하 행렬 (진술 기준):")
-            st.dataframe(loadings.style.background_gradient(axis=0, cmap='YlGnBu'))
+                st.write("📈 요인 부하 행렬 (진술 기준):")
+                st.dataframe(loadings.style.background_gradient(axis=0, cmap='YlGnBu'))
 
-            st.write("📌 요인별 대표 진술:")
-            for col in loadings.columns:
-                top = loadings[col].abs().idxmax()
-                st.markdown(f"- **{col}**: 대표 진술 → {top}")
+                st.write("📌 요인별 대표 진술:")
+                for col in loadings.columns:
+                    top = loadings[col].abs().idxmax()
+                    st.markdown(f"- **{col}**: 대표 진술 → {top}")
         else:
             st.warning("요인 분석을 위해 최소 5명의 응답이 필요합니다.")
     else:
