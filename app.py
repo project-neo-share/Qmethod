@@ -154,12 +154,10 @@ with tab2:
         else:
             st.warning("최소 5명의 응답이 필요합니다.")
 
-tab3 = st.container()
-
 with tab3:
     if os.path.exists(DATA_PATH):
         df = pd.read_csv(DATA_PATH)
-        st.subheader("🔁 TPPP 블록 간 피드백 네트워크")
+        st.subheader("🔁 TPPP 섹션 간 상관관계")
         if len(df) >= 5:
 
             # 상관행렬 계산
@@ -171,29 +169,6 @@ with tab3:
                 for sec2, idxs2 in section_map.items():
                     sub_corrs = [corr.iloc[i, j] for i in idxs1 for j in idxs2 if i != j]
                     block_corr.loc[sec1, sec2] = np.mean(sub_corrs)
-
-            # 네트워크 그래프 생성
-            G = nx.Graph()
-            for sec in tp_labels:
-                G.add_node(sec)
-
-            for i in tp_labels:
-                for j in tp_labels:
-                    if i != j:
-                        weight = block_corr.loc[i, j]
-                        if abs(weight) > 0.5:
-                            G.add_edge(i, j, weight=round(weight, 2))
-
-            pos = nx.circular_layout(G)
-            plt.figure(figsize=(6, 6))
-            nx.draw_networkx_nodes(G, pos, node_color='lightcoral', node_size=2000)
-            nx.draw_networkx_labels(G, pos, font_size=12, font_weight='bold', font_family=font_prop.get_name())
-            nx.draw_networkx_edges(G, pos, width=2)
-            nx.draw_networkx_edge_labels(G, pos,
-                edge_labels={(u, v): f"{d['weight']}" for u, v, d in G.edges(data=True)},
-                font_size=10, font_family=font_prop.get_name())
-            plt.title("TPPP 블록 간 평균 상관 기반 피드백 네트워크", fontproperties=font_prop)
-            st.pyplot(plt)
 
             # 히트맵 출력
             st.subheader("📊 TPPP 블록 간 상관 히트맵")
