@@ -170,7 +170,7 @@ with tab3:
                     sub_corrs = [corr.iloc[i, j] for i in idxs1 for j in idxs2 if i != j]
                     block_corr.loc[sec1, sec2] = np.mean(sub_corrs)
 
-            # DiGraph로 방향성 피드백 구조 구축
+            # DiGraph 방향성 부여 (강한 방향 기준)
             DG = nx.DiGraph()
             for i in tp_labels:
                 DG.add_node(i)
@@ -179,7 +179,7 @@ with tab3:
                 for j in tp_labels:
                     if i != j:
                         weight = block_corr.loc[i, j]
-                        if abs(weight) > 0.5:
+                        if weight > 0.4:  # 방향성 적용
                             DG.add_edge(i, j, weight=round(weight, 2))
 
             st.markdown("### 🔄 TPPP 인지 흐름 방향 그래프 (DiGraph)")
@@ -202,7 +202,7 @@ with tab3:
             else:
                 st.info("루프(자기강화 피드백 구조)는 발견되지 않았습니다.")
 
-            # 히트맵
+            # 히트맵 출력
             st.markdown("### 📊 TPPP 상관 행렬 히트맵")
             fig2, ax2 = plt.subplots()
             sns.heatmap(block_corr.astype(float), annot=True, cmap='coolwarm', vmin=-1, vmax=1,
