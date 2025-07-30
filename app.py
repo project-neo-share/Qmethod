@@ -31,7 +31,7 @@ if not st.session_state.authenticated:
             st.sidebar.success("인증 성공!")
         else:
             st.sidebar.error("비밀번호가 틀렸습니다.")
-else:
+if st.session_state.authenticated:
     # 인증된 경우 다운로드 버튼 표시
     st.sidebar.success("관리자 모드 활성화됨")
 
