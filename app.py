@@ -96,5 +96,13 @@ if submitted:
             item_style=item_style,
             key="sort2"
         )
-        for idx, item in enumerate(sorted_list, 1):
+        meta, sorted_items = sortables.sort_items(
+            flat,
+            "vertical",
+            False,
+            item_style=item_style,
+            key="sort2"
+        )
+        
+        for idx, item in enumerate(sorted_items, 1):
             st.markdown(f"**{idx}위**: {item}")
