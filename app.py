@@ -170,7 +170,7 @@ with tabs[2]:
                     if abs(weight) > 0.6:  # 강한 상관만 피드백 연결로 간주
                         G.add_edge(f"Q{i+1}", f"Q{j+1}", weight=round(weight, 2))
 
-            set_korean_font()
+            set_custom_korean_font()
             
             pos = nx.spring_layout(G, seed=42)
             plt.figure(figsize=(13, 10))
