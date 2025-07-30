@@ -178,9 +178,10 @@ with tab3:
             for i in tp_labels:
                 for j in tp_labels:
                     if i != j:
-                        weight = block_corr.loc[i, j]
-                        if weight > 0.4:  # 방향성 적용
-                            DG.add_edge(i, j, weight=round(weight, 2))
+                        weight_ij = block_corr.loc[i, j]
+                        weight_ji = block_corr.loc[j, i]
+                        if weight_ij > weight_ji and weight_ij > 0.4:
+                            DG.add_edge(i, j, weight=round(weight_ij, 2))
 
             st.markdown("### 🔄 TPPP 인지 흐름 방향 그래프 (DiGraph)")
             pos = nx.circular_layout(DG)
@@ -195,7 +196,8 @@ with tab3:
 
             # 루프 탐지
             st.markdown("### 🔁 피드백 루프 구조 감지 결과")
-            cycles = list(nx.simple_cycles(DG))
+            cycles = [cycle for cycle in nx.simple_cycles(DG) if len(cycle) >= 3]
+
             if cycles:
                 for i, loop in enumerate(cycles, 1):
                     st.markdown(f"- 루프 {i}: {' → '.join(loop)} → {loop[0]}")
