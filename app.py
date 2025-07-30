@@ -96,7 +96,7 @@ with tab2:
         df = pd.read_csv(DATA_PATH)
         st.write(f"총 응답 수: {len(df)}명")
 
-        if len(df) >= 10:
+        if len(df) >= 2:
             st.success("응답이 10건 이상 누적되어 분석을 수행합니다.")
             X = StandardScaler().fit_transform(df)
             pca = PCA(n_components=2)
@@ -114,6 +114,6 @@ with tab2:
             ax.set_title("Q-Type 요인 공간 (PCA)")
             st.pyplot(fig)
         else:
-            st.warning("분석을 위해 최소 10명의 응답이 필요합니다.")
+            st.warning("분석을 위해 최소 10명의 응답이 필요합니다(파일럿은 2개)")
     else:
         st.info("아직 저장된 응답이 없습니다.")
