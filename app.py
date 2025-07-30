@@ -95,31 +95,40 @@ with tabs[0]:
 with tabs[1]:
     if os.path.exists(DATA_PATH):
         df = pd.read_csv(DATA_PATH)
-        st.subheader("🧠 PCQ 요인 분석")
+        st.subheader("🧠 PCQ 요인 분석 (진술 간 상관 기반)")
         st.write(f"총 응답 수: {len(df)}명")
+
         if len(df) >= 5:
-            st.write("✅ 응답자 간 상관행렬 기반 요인 추출 중...")
-            corr = df.T.corr()
+            st.write("✅ 진술 간 상관행렬 기반 요인 추출 중...")
+
+            # 진술 간 상관행렬 (응답자 × 진술 → 진술 × 진술)
+            corr = df.corr()
+
+            # 요인 분석
             fa = FactorAnalyzer(rotation='varimax')
-            fa.fit(corr)
+            fa.fit(df)  # 원 데이터 사용 (아래에서 eigenvalue 추출)
             ev, _ = fa.get_eigenvalues()
 
-            st.write("📌 고유값:")
+            st.write("📌 고유값 (Eigenvalues):")
             st.bar_chart(ev)
 
-            n_factors = st.slider("추출할 요인 수", 1, min(6, len(df)-1), 2)
+            n_factors = st.slider("추출할 요인 수", 1, min(6, len(df.columns)-1), 2)
+
             fa = FactorAnalyzer(n_factors=n_factors, rotation='varimax')
-            fa.fit(corr)
-            loadings = pd.DataFrame(fa.loadings_, columns=[f"요인{i+1}" for i in range(n_factors)])
-            loadings.index = [f"응답자{i+1}" for i in range(len(df))]
+            fa.fit(df)
+            loadings = pd.DataFrame(
+                fa.loadings_,
+                index=[f"Q{idx+1}" for idx in range(len(df.columns))],
+                columns=[f"요인{i+1}" for i in range(n_factors)]
+            )
 
-            st.write("📈 요인 부하 행렬 (응답자 기준):")
-            st.dataframe(loadings)
+            st.write("📈 요인 부하 행렬 (진술 기준):")
+            st.dataframe(loadings.style.background_gradient(axis=0, cmap='YlGnBu'))
 
-            st.write("📌 요인별 대표 응답자:")
+            st.write("📌 요인별 대표 진술:")
             for col in loadings.columns:
                 top = loadings[col].abs().idxmax()
-                st.markdown(f"- **{col}**: 대표 응답자 → {top}")
+                st.markdown(f"- **{col}**: 대표 진술 → {top}")
         else:
             st.warning("요인 분석을 위해 최소 5명의 응답이 필요합니다.")
     else:
@@ -129,32 +138,35 @@ with tabs[2]:
     if os.path.exists(DATA_PATH):
         df = pd.read_csv(DATA_PATH)
         st.subheader("🔁 진술 간 피드백 구조 (상관 네트워크)")
+
         if len(df) >= 5:
-            df_t = df.T
-            corr = df_t.corr()
+            corr = df.corr()  # 진술 간 상관계수 행렬
             G = nx.Graph()
 
+            # 진술 노드 추가
             for i in range(len(statements)):
                 G.add_node(f"Q{i+1}", label=statements[i])
 
-            for i in range(len(statements)):
-                for j in range(i+1, len(statements)):
+            # 상관계수 기반 엣지 생성
+            for i in range(len(df.columns)):
+                for j in range(i+1, len(df.columns)):
                     weight = corr.iloc[i, j]
-                    if abs(weight) > 0.6:
+                    if abs(weight) > 0.6:  # 강한 상관만 피드백 연결로 간주
                         G.add_edge(f"Q{i+1}", f"Q{j+1}", weight=round(weight, 2))
 
             pos = nx.spring_layout(G, seed=42)
-            plt.figure(figsize=(12, 10))
-            nx.draw_networkx_nodes(G, pos, node_color='skyblue', node_size=700)
-            nx.draw_networkx_labels(G, pos, labels=nx.get_node_attributes(G, 'label'), font_size=9)
+            plt.figure(figsize=(13, 10))
+            nx.draw_networkx_nodes(G, pos, node_color='lightblue', node_size=700)
+            nx.draw_networkx_labels(G, pos, labels=nx.get_node_attributes(G, 'label'), font_size=8)
             edges = G.edges(data=True)
             nx.draw_networkx_edges(G, pos, edgelist=edges, width=1)
             nx.draw_networkx_edge_labels(G, pos,
                 edge_labels={(u, v): f"{d['weight']}" for u, v, d in edges},
-                font_size=8)
+                font_size=7)
             plt.title("진술 간 상관 기반 피드백 네트워크")
             st.pyplot(plt)
         else:
             st.warning("피드백 구조 시각화를 위해 최소 5명의 응답이 필요합니다.")
     else:
         st.info("응답 데이터가 없습니다.")
+
