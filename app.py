@@ -58,16 +58,16 @@ group_items = [
 col1, col2 = st.columns([1, 2])
 
 with col1:
-    st.subheader("왼쪽 그룹별 정렬")
+    st.subheader("🧱 그룹별 정렬")
     bubble_lists = sortables.sort_items(
-        [group_items[0], group_items[1], group_items[2], group_items[3]],
-        "horizontal",  # direction
-        True,          # multi_containers
+        [{"label": label, "items": items} for label, items in zip(group_labels, group_items)],
+        "horizontal",
+        True,
         key="sort1"
     )
 
 with col2:
-    st.subheader("최종 순위 정렬 (1~24위)")
+    st.subheader("🗂️ 최종 순위 정렬 (1~24위)")
     flat = [item for group in bubble_lists for item in group]
     final = sortables.sort_items(
         [flat],
@@ -77,6 +77,6 @@ with col2:
     )
 
 if st.button("✅ 제출"):
-    st.success("정렬 완료! 결과:")
+    st.success("정렬 완료!")
     for idx, item in enumerate(final[0], 1):
         st.write(f"{idx}위: 진술문 {item}")
