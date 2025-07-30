@@ -158,6 +158,10 @@ with tabs[2]:
                     if abs(weight) > 0.6:  # 강한 상관만 피드백 연결로 간주
                         G.add_edge(f"Q{i+1}", f"Q{j+1}", weight=round(weight, 2))
 
+            import matplotlib
+            plt.rcParams['font.family'] = 'Malgun Gothic'  # 한글 출력 설정
+            plt.rcParams['axes.unicode_minus'] = False
+            
             pos = nx.spring_layout(G, seed=42)
             plt.figure(figsize=(13, 10))
             nx.draw_networkx_nodes(G, pos, node_color='lightblue', node_size=700)
