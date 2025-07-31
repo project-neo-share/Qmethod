@@ -121,12 +121,11 @@ with st.expander("🧩 섹션 설명", expanded=True):
 st.markdown(
     """
     <style>
-    /* 모든 탭 버튼 span에 margin을 강제로 주고, 순서대로 선택 */
-    div[data-testid="stTabs"] > div > div > div:nth-child(2) span {
+    /* tab2 (두 번째)와 tab3 (세 번째) 탭의 텍스트를 투명하게 설정 */
+    div[data-baseweb="tabs"] > div > div > div:nth-child(2) button span {
         color: transparent !important;
     }
-
-    div[data-testid="stTabs"] > div > div > div:nth-child(3) span {
+    div[data-baseweb="tabs"] > div > div > div:nth-child(3) button span {
         color: transparent !important;
     }
     </style>
