@@ -20,20 +20,7 @@ import networkx as nx
 
 st.set_page_config(page_title="Q-Method Analyzer", layout="wide")
 st.title("데이터센터 지속가능성 인식 조사")
-st.markdown(
-    """
-    <style>
-    /* tab2 (두 번째), tab3 (세 번째) 텍스트만 숨기기 */
-    .stTabs [data-baseweb="tab"] button:nth-child(2) span {
-        color: transparent !important;
-    }
-    .stTabs [data-baseweb="tab"] button:nth-child(3) span {
-        color: transparent !important;
-    }
-    </style>
-    """,
-    unsafe_allow_html=True
-)
+
 DATA_PATH = "responses.csv"
 # 사이드바 관리자 로그인 영역
 st.sidebar.subheader("🔐 관리자 로그인")
@@ -134,7 +121,20 @@ with st.expander("🧩 섹션 설명", expanded=True):
 
 
 tab1, tab2, tab3 = st.tabs(["✍️ 설문 응답", "📈 유형 분석", "🔁 인지흐름 분석"])
-
+st.markdown(
+    """
+    <style>
+    /* tab2 (두 번째), tab3 (세 번째) 텍스트만 숨기기 */
+    .stTabs [data-baseweb="tab"] button:nth-child(2) span {
+        color: transparent !important;
+    }
+    .stTabs [data-baseweb="tab"] button:nth-child(3) span {
+        color: transparent !important;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True
+)
 statements = [
     "데이터센터는 재생에너지를 사용할 때 환경 책임성을 갖춘 시설로 평가받을 수 있다.",
     "디젤이나 가스 발전기를 백업 전력으로 사용할 경우 환경적 우려가 제기될 수 있다.",
