@@ -214,7 +214,7 @@ with tab2:
             loadings = pd.DataFrame(
                 fa.loadings_,
                 index=[f"Q{idx+1}" for idx in range(len(df.columns))],
-                columns=["Type1", "Type2"]
+                columns=["Type1", "Type2", "Type3"]
             )
 
             st.write("📌 유형 부하 행렬:")
