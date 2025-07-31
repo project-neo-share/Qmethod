@@ -200,8 +200,15 @@ with tab2:
         df = pd.read_csv(DATA_PATH)
         st.subheader("📈 유형 분석 및 TPPP 영역별 프로파일링")
         if len(df) >= 5:
-            df_noise = df + np.random.normal(0, 0.001, df.shape)
-            fa = FactorAnalyzer(n_factors=2, rotation='varimax')
+            # 수치형 컬럼만 추출
+            df_numeric = df.select_dtypes(include=[np.number])
+            
+            # 동일한 shape의 노이즈 생성 후 더하기
+            noise = np.random.normal(0, 0.001, df_numeric.shape)
+            df_noise = df_numeric + noise
+            
+            # 비수치형은 그대로 붙이기
+            fa = FactorAnalyzer(n_factors=3, rotation='varimax')
             fa.fit(df_noise)
 
             loadings = pd.DataFrame(
@@ -238,6 +245,13 @@ with tab3:
         st.subheader("🧠 TPPP 인지 흐름 및 피드백 구조 요약")
 
         if len(df) >= 5:
+            # 수치형 컬럼만 추출
+            df_numeric = df.select_dtypes(include=[np.number])
+            
+            # 동일한 shape의 노이즈 생성 후 더하기
+            noise = np.random.normal(0, 0.001, df_numeric.shape)
+            df = df_numeric + noise
+            
             # 상관행렬 계산
             corr = df.corr()
             tp_labels = list(section_map.keys())
