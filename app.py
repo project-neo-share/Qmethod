@@ -202,24 +202,34 @@ with tab2:
         if len(df) >= 5:
             # 수치형 컬럼만 추출
             df_numeric = df.select_dtypes(include=[np.number])
-            
+
             # 동일한 shape의 노이즈 생성 후 더하기
             noise = np.random.normal(0, 0.001, df_numeric.shape)
             df_noise = df_numeric + noise
-            
-            # 비수치형은 그대로 붙이기
-            fa = FactorAnalyzer(n_factors=3, rotation='varimax')
+
+            # ▶️ 고유값 기반으로 factor 수 자동 결정
+            fa_temp = FactorAnalyzer(rotation=None)
+            fa_temp.fit(df_noise)
+            eigen_values, _ = fa_temp.get_eigenvalues()
+            n_factors = sum(eigen_values >= 1.0)
+
+            st.info(f"🔍 고유값 1.0 이상 기준, 추출된 요인 수: {n_factors}개")
+
+            # ▶️ 실제 분석
+            fa = FactorAnalyzer(n_factors=n_factors, rotation='varimax')
             fa.fit(df_noise)
 
+            # ▶️ 요인 부하 행렬 생성
             loadings = pd.DataFrame(
                 fa.loadings_,
-                index=[f"Q{idx+1}" for idx in range(len(df.columns))],
-                columns=["Type1", "Type2", "Type3"]
+                index=[f"Q{idx+1}" for idx in range(df_numeric.shape[1])],
+                columns=[f"Type{i+1}" for i in range(n_factors)]
             )
 
             st.write("📌 유형 부하 행렬:")
             st.dataframe(loadings)
 
+            # ▶️ TPPP 영역별 프로파일 요약
             st.write("📊 유형별 TPPP 평균 프로파일")
             result = []
             for factor in loadings.columns:
