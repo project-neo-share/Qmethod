@@ -118,21 +118,7 @@ with st.expander("🧩 섹션 설명", expanded=True):
       4) 과정 (Process): 이 영역은 데이터센터가 어떤 절차와 방식으로 결정·운영되었는지를 시민들이 어떻게 평가하는지를 다룹니다. 예를 들어 정보 공개 시점, 환경영향평가의 신뢰도, 기업–지자체 협력 여부, 사후 모니터링의 유무 등이 포함됩니다. 당신은 결정 과정의 투명성과 참여 방식이 시민의 신뢰와 수용에 어떤 영향을 줄 수 있다고 생각하십니까?<br>
     """, unsafe_allow_html=True)
 
-st.markdown(
-    """
-    <style>
-    /* tab2 (두 번째)와 tab3 (세 번째) 탭의 텍스트를 투명하게 설정 */
-    div[data-baseweb="tabs"] > div > div > div:nth-child(2) button span {
-        color: transparent !important;
-    }
-    div[data-baseweb="tabs"] > div > div > div:nth-child(3) button span {
-        color: transparent !important;
-    }
-    </style>
-    """,
-    unsafe_allow_html=True
-)
-tab1, tab2, tab3 = st.tabs(["✍️ 설문 응답", "유형 분석", "인지흐름 분석"])
+tab1, tab2, tab3 = st.tabs(["✍️ 설문 응답",  "📊", "🧠"])
 
 
 statements = [
