@@ -20,7 +20,20 @@ import networkx as nx
 
 st.set_page_config(page_title="Q-Method Analyzer", layout="wide")
 st.title("데이터센터 지속가능성 인식 조사")
-
+st.markdown(
+    """
+    <style>
+    /* tab2 (두 번째), tab3 (세 번째) 텍스트만 숨기기 */
+    .stTabs [data-baseweb="tab"] button:nth-child(2) span {
+        color: transparent !important;
+    }
+    .stTabs [data-baseweb="tab"] button:nth-child(3) span {
+        color: transparent !important;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True
+)
 DATA_PATH = "responses.csv"
 # 사이드바 관리자 로그인 영역
 st.sidebar.subheader("🔐 관리자 로그인")
