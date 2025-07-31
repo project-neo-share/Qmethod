@@ -20,19 +20,7 @@ import networkx as nx
 
 st.set_page_config(page_title="Q-Method Analyzer", layout="wide")
 st.title("데이터센터 지속가능성 인식 조사")
-st.markdown(
-    """
-    <style>
-    .stTabs [data-baseweb="tab"] button:nth-child(2) span {
-        color: transparent !important;
-    }
-    .stTabs [data-baseweb="tab"] button:nth-child(3) span {
-        color: transparent !important;
-    }
-    </style>
-    """,
-    unsafe_allow_html=True
-)
+
 DATA_PATH = "responses.csv"
 # 사이드바 관리자 로그인 영역
 st.sidebar.subheader("🔐 관리자 로그인")
@@ -130,6 +118,21 @@ with st.expander("🧩 섹션 설명", expanded=True):
       4) 과정 (Process): 이 영역은 데이터센터가 어떤 절차와 방식으로 결정·운영되었는지를 시민들이 어떻게 평가하는지를 다룹니다. 예를 들어 정보 공개 시점, 환경영향평가의 신뢰도, 기업–지자체 협력 여부, 사후 모니터링의 유무 등이 포함됩니다. 당신은 결정 과정의 투명성과 참여 방식이 시민의 신뢰와 수용에 어떤 영향을 줄 수 있다고 생각하십니까?<br>
     """, unsafe_allow_html=True)
 
+st.markdown(
+    """
+    <style>
+    /* 모든 탭 버튼 span에 margin을 강제로 주고, 순서대로 선택 */
+    div[data-testid="stTabs"] > div > div > div:nth-child(2) span {
+        color: transparent !important;
+    }
+
+    div[data-testid="stTabs"] > div > div > div:nth-child(3) span {
+        color: transparent !important;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True
+)
 tab1, tab2, tab3 = st.tabs(["✍️ 설문 응답", "유형 분석", "인지흐름 분석"])
 
 
