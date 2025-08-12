@@ -19,7 +19,6 @@ import datetime
 import networkx as nx
 
 
-st.set_option('server.fileWatcherType', 'none')
 st.set_page_config(page_title="Q-Method Analyzer", layout="wide")
 st.title("데이터센터 지속가능성 인식 조사")
 
