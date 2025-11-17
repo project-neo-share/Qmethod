@@ -17,13 +17,202 @@ from sklearn.preprocessing import StandardScaler
 import seaborn as sns
 import datetime
 import networkx as nx
-
+import matplotlib.font_manager as fm
 
 st.set_page_config(page_title="Q-Method Analyzer", layout="wide")
 st.title("데이터센터 지속가능성 인식 조사")
 
 DATA_PATH = "responses.csv"
 # 사이드바 관리자 로그인 영역
+# -----------------------------
+# Secrets (GitHub)
+# -----------------------------
+def _get_secret(path, default=""):
+    try:
+        cur = st.secrets
+        for key in path.split("."):
+            cur = cur[key]
+        return cur
+    except Exception:
+        return default
+
+GH_TOKEN   = _get_secret("github.token")
+GH_REPO    = _get_secret("github.repo")
+GH_BRANCH  = _get_secret("github.branch", "main")
+GH_REMOTEP = _get_secret("github.data_path", DATA_PATH)  # 원격 저장 경로
+GH_README  = _get_secret("github.readme_path", "README.md")         # (옵션)
+
+# -----------------------------
+# 실시간 척도 현황 계산
+# -----------------------------
+def calc_scale_counts(answers):
+    counts = {i: 0 for i in range(1, 6)}
+    for v in answers.values():
+        counts[v] += 1
+    return counts
+
+def _gh_headers(token):
+    return {
+        "Authorization": f"token {token}",
+        "Accept": "application/vnd.github+json",
+        "X-GitHub-Api-Version": "2022-11-28",
+        "Content-Type": "application/json",
+        "User-Agent": "streamlit-qmethod-sns"
+    }
+
+def gh_get_sha(owner_repo, path, token, branch):
+    url = f"https://api.github.com/repos/{owner_repo}/contents/{path}"
+    r = requests.get(url, headers=_gh_headers(token), params={"ref": branch}, timeout=20)
+    if r.status_code == 200:
+        try:
+            return r.json().get("sha")
+        except Exception:
+            return None
+    elif r.status_code == 404:
+        return None
+    else:
+        raise RuntimeError(f"GitHub GET 실패: {r.status_code} {r.text}")
+
+def gh_put_file(owner_repo, path, token, branch, content_bytes, message):
+    url = f"https://api.github.com/repos/{owner_repo}/contents/{path}"
+    b64 = base64.b64encode(content_bytes).decode("ascii")
+    sha = gh_get_sha(owner_repo, path, token, branch)
+    payload = {"message": message, "content": b64, "branch": branch}
+    if sha:
+        payload["sha"] = sha
+    r = requests.put(url, headers=_gh_headers(token), data=json.dumps(payload), timeout=30)
+    if r.status_code in (200, 201):
+        return True, r.json()
+    return False, f"{r.status_code}: {r.text}"
+
+def push_csv_to_github(local_path, remote_path=None, note="Update survey_data.csv"):
+    if not (GH_TOKEN and GH_REPO):
+        return False, "GitHub secrets 누락(github.token, github.repo)"
+    if remote_path is None:
+        remote_path = GH_REMOTEP
+    try:
+        with open(local_path, "rb") as f:
+            content = f.read()
+    except Exception as e:
+        return False, f"로컬 CSV 읽기 실패: {e}"
+    ok, resp = gh_put_file(GH_REPO, remote_path, GH_TOKEN, GH_BRANCH, content, note)
+    return ok, resp
+
+# -----------------------------
+# 사이드바 : 실시간 현황 패널
+# -----------------------------
+
+with st.sidebar:
+    st.subheader("🔐 관리자 / 동기화")
+    if "authenticated" not in st.session_state:
+        st.session_state.authenticated = False
+
+    admin_pw = st.sidebar.text_input("관리자 비밀번호 (선택)", type="password")
+    if st.sidebar.button("로그인"):
+        if admin_pw and _get_secret("admin.password") == admin_pw:
+            st.session_state.authenticated = True
+            st.sidebar.success("인증 성공")
+        else:
+            st.sidebar.error("인증 실패")
+
+    auto_sync = st.sidebar.checkbox("응답 저장 시 GitHub 자동 푸시", value=True)
+
+    st.subheader("📊 실시간 척도 현황")
+    counts = calc_scale_counts(st.session_state['answers'])
+    if st.button("🔄 새로고침"):
+        st.rerun()
+
+    df_counts = pd.DataFrame({
+        "척도": [LIKERT[i-1] for i in range(1, 6)],
+        "선택 문항 수": [counts[i] for i in range(1, 6)],
+        "최대 허용 개수": [MAX_COUNT[i] for i in range(1, 6)],
+    })
+
+    st.dataframe(df_counts, width="content")
+
+    # Plotly 그래프 표시
+    fig = go.Figure(data=[
+        go.Bar(name="선택 문항 수", x=LIKERT, y=[counts[i] for i in range(1,6)], marker_color='skyblue'),
+        go.Bar(name="최대 허용 개수", x=LIKERT, y=[MAX_COUNT[i] for i in range(1,6)], marker_color='salmon')
+    ])
+    fig.update_layout(
+        barmode='group',
+        yaxis_title="문항 수",
+        xaxis_tickangle=-20,
+        template="plotly_white",
+        height=350,
+        margin=dict(l=10, r=10, t=30, b=10)
+    )
+    st.plotly_chart(fig, use_container_width=True)
+
+
+# -----------------------------
+# Utils
+# -----------------------------
+
+
+
+def is_valid_email(s: str) -> bool:
+    if not s: return False
+    s = s.strip()
+    if len(s) > 150: return False
+    return bool(EMAIL_RE.match(s))
+
+def load_csv_safe(path: str):
+    if not os.path.exists(path):
+        return None
+    try:
+        if os.path.getsize(path) == 0:
+            return None
+        df = pd.read_csv(path)
+        if df.empty:
+            return None
+        return df
+    except Exception:
+        return None
+
+def save_csv_safe(df: pd.DataFrame, path: str):
+    try:
+        df.to_csv(path, index=False, encoding="utf-8-sig")
+        return True
+    except Exception as e:
+        st.error(f"CSV 저장 실패: {e}")
+        return False
+
+def ensure_q_columns(df: pd.DataFrame, q_count: int):
+    cols = [f"Q{i:02d}" for i in range(1, q_count + 1)]
+    for c in cols:
+        if c not in df.columns: df[c] = np.nan
+    return df, cols
+
+def zscore_rows(a: np.ndarray):
+    m = a.mean(axis=1, keepdims=True)
+    s = a.std(axis=1, ddof=0, keepdims=True)
+    s = np.where(s < EPS, 1.0, s)
+    return (a - m) / s
+
+def rank_rows(a: np.ndarray):
+    df = pd.DataFrame(a)
+    return df.rank(axis=1, method="average", na_option="keep").values
+
+def varimax(Phi, gamma=1.0, q=100, tol=1e-6, seed=42):
+    Phi = Phi.copy(); p, k = Phi.shape
+    R = np.eye(k); d_old = 0
+    for _ in range(q):
+        Lambda = Phi @ R
+        u, s, vh = np.linalg.svd(
+            Phi.T @ (Lambda**3 - (gamma/p) * (Lambda @ np.diag(np.sum(Lambda**2, axis=0))))
+        )
+        R = u @ vh
+        d = np.sum(s)
+        if d_old != 0 and d/d_old < 1 + tol: break
+        d_old = d
+    return Phi @ R, R
+
+def choose_n_factors(eigvals, nmax):
+    k = int(np.sum(eigvals >= 1.0))
+    return max(2, min(nmax, k))
+
 st.sidebar.subheader("🔐 관리자 로그인")
 
 # 세션 상태 초기화
@@ -57,9 +246,6 @@ if st.session_state.authenticated:
     else:
         st.sidebar.info("ℹ️ 아직 저장된 응답 파일이 없습니다.")
         
-
-import matplotlib.font_manager as fm
-
 def get_korean_fontprop():
     font_path = "fonts/NanumGothic.ttf"
     if os.path.exists(font_path):
