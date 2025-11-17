@@ -2,7 +2,7 @@
 Q-Method Streamlit Application
 
 Author      : Prof. Dr. Songhee Kang  
-Last Update : 2025-07-31  
+Last Update : 2025-11-17  
 Description : Likert-based Q-Method survey tool with GitHub push integration
 """
 
@@ -36,14 +36,14 @@ DATA_PATH = "responses.csv"
 EPS = 1e-8
 EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
-# Likert 스케일 및 허용 개수 (예시값, 필요시 조정 가능)
+# Likert 스케일 및 허용 개수 (24문항 기준 Q-sort형 분포: 2 + 5 + 10 + 5 + 2 = 24)
 LIKERT = ["전혀 동의하지 않음", "동의하지 않음", "보통이다", "동의함", "매우 동의함"]
 MAX_COUNT = {
-    1: 3,   # 전혀 동의하지 않음
+    1: 2,   # 전혀 동의하지 않음
     2: 5,   # 동의하지 않음
-    3: 24,  # 보통이다 (사실상 제한 없음에 가깝게 설정)
+    3: 10,  # 보통이다
     4: 5,   # 동의함
-    5: 3    # 매우 동의함
+    5: 2    # 매우 동의함
 }
 
 # ---------------------------------
@@ -111,7 +111,7 @@ GH_REMOTEP = _get_secret("github.data_path", DATA_PATH)
 GH_README  = _get_secret("github.readme_path", "README.md")
 
 # ---------------------------------
-# GitHub REST API (현재는 사용 안 해도 됨)
+# (선택) REST API 방식 GitHub 업로드 유틸
 # ---------------------------------
 def _gh_headers(token):
     return {
@@ -299,12 +299,15 @@ with st.sidebar:
     pw_input = st.text_input("관리자 비밀번호 (선택)", type="password")
     if st.button("로그인"):
         if pw_input and _get_secret("admin.password") == pw_input:
-            st.session_state.authenticated = True
+            st.session_state["authenticated"] = True
             st.success("인증 성공")
         else:
             st.error("인증 실패")
 
-    auto_sync = st.checkbox("응답 저장 시 GitHub 자동 푸시", value=st.session_state.get("auto_sync", True))
+    auto_sync = st.checkbox(
+        "응답 저장 시 GitHub 자동 푸시",
+        value=st.session_state.get("auto_sync", True)
+    )
     st.session_state["auto_sync"] = auto_sync
 
     st.subheader("📊 실시간 척도 현황")
@@ -337,7 +340,7 @@ with st.sidebar:
     st.plotly_chart(fig, use_container_width=True)
 
     # 관리자 모드에서 응답 CSV 다운로드
-    if st.session_state.authenticated:
+    if st.session_state["authenticated"]:
         st.success("관리자 모드 활성화됨")
         if os.path.exists(DATA_PATH):
             try:
@@ -376,10 +379,10 @@ with st.expander("🧩 섹션 설명", expanded=True):
     설문은 리커트 방식으로 진행되며, 제시된 24개 문장을 “나는 이 생각에 얼마나 동의하는가?”의 기준으로 입력해 주세요.<br>
     <b>매우 동의하거나 동의하지 않는 문장은 총 1-3문장 이내로 하시고, 기본적으로 중립적이거나 판단을 유보하시고 싶은 문장은 주로 보통이다로 선택해주세요.</b><br>
     문장들은 다음 네 개의 관점으로 구성되어 있습니다:<br>
-      1) 기술(Technology) …<br>
-      2) 사람 (People) …<br>
-      3) 장소 (Place) …<br>
-      4) 과정 (Process) …<br>
+      1) 기술(Technology)<br>
+      2) 사람(People)<br>
+      3) 장소(Place)<br>
+      4) 과정(Process)<br>
     """, unsafe_allow_html=True)
 
 # ---------------------------------
@@ -392,39 +395,36 @@ tab1, tab2, tab3 = st.tabs(["✍️ 설문 응답", "📊", "🧠"])
 # ---------------------------------
 with tab1:
     st.subheader("✍️ 설문에 응답해 주세요")
-    responses = {}
 
-    with st.form(key="likert_form"):
-        email = st.text_input("이메일을 입력해 주세요 (필수 사항)", key="email_input")
+    # 이메일 입력
+    email = st.text_input("이메일을 입력해 주세요 (필수 사항)", key="email_input")
 
-        for idx, stmt in enumerate(statements, 1):
-            q_key = f"Q{idx:02}"
-            # 현재 session_state answers 값 → 기본 index로 변환
-            current_val = st.session_state["answers"].get(q_key, 3)
-            current_label = [k for k, v in scale_map.items() if v == current_val][0]
-            default_index = scale_labels.index(current_label)
+    # 문항별 라디오 버튼 – 선택 시 바로 session_state["answers"] 반영
+    for idx, stmt in enumerate(statements, 1):
+        q_key = f"Q{idx:02}"
 
-            response = st.radio(
-                f"{idx}. {stmt}",
-                options=scale_labels,
-                index=default_index,
-                key=f"stmt_{idx}",
-                horizontal=True
-            )
+        current_val = st.session_state["answers"].get(q_key, 3)
+        current_label = [k for k, v in scale_map.items() if v == current_val][0]
+        default_index = scale_labels.index(current_label)
 
-            # 라디오 선택값을 바로 session_state["answers"]에 반영
-            numeric_val = scale_map[response]
-            st.session_state["answers"][q_key] = numeric_val
-            responses[q_key] = numeric_val
+        selected_label = st.radio(
+            f"{idx}. {stmt}",
+            options=scale_labels,
+            index=default_index,
+            key=q_key,
+            horizontal=True
+        )
 
-        responses["email"] = email.strip()
+        st.session_state["answers"][q_key] = scale_map[selected_label]
 
-        submitted = st.form_submit_button("제출하기")
-
-    if submitted:
+    # 제출 버튼 – 현재 session_state["answers"]를 그대로 저장
+    if st.button("제출하기"):
         if not is_valid_email(email):
             st.error("올바른 이메일 주소를 입력해 주세요.")
         else:
+            responses = dict(st.session_state["answers"])
+            responses["email"] = email.strip()
+
             df_new = pd.DataFrame([responses])
             if os.path.exists(DATA_PATH):
                 df_old = pd.read_csv(DATA_PATH)
@@ -434,7 +434,6 @@ with tab1:
 
             if save_csv_safe(df_all, DATA_PATH):
                 st.success("응답이 저장되었습니다.")
-                # auto_sync 켜져 있으면 GitHub 푸시
                 if st.session_state.get("auto_sync", True):
                     push_to_github(DATA_PATH)
 
@@ -462,7 +461,7 @@ with tab2:
 
             loadings = pd.DataFrame(
                 fa.loadings_,
-                index=[f"Q{idx+1}" for idx in range(df_numeric.shape[1])],
+                index=[f"Q{idx+1:02d}" for idx in range(df_numeric.shape[1])],
                 columns=[f"Type{i+1}" for i in range(n_factors)]
             )
 
@@ -474,7 +473,7 @@ with tab2:
             for factor in loadings.columns:
                 scores = []
                 for sec, idxs in section_map.items():
-                    mean = loadings.loc[[f"Q{i+1}" for i in idxs], factor].mean()
+                    mean = loadings.loc[[f"Q{i+1:02d}" for i in idxs], factor].mean()
                     scores.append((sec, mean))
                 row = pd.DataFrame(dict(scores), index=[factor])
                 result.append(row)
@@ -531,8 +530,10 @@ with tab3:
             nx.draw_networkx_labels(DG, pos, font_size=12, font_family=font_prop.get_name())
             nx.draw_networkx_edges(DG, pos, width=2, arrows=True, arrowstyle='-|>')
             edge_labels = {(u, v): f"{d['weight']}" for u, v, d in DG.edges(data=True)}
-            nx.draw_networkx_edge_labels(DG, pos, edge_labels=edge_labels,
-                                         font_size=10, font_family=font_prop.get_name())
+            nx.draw_networkx_edge_labels(
+                DG, pos, edge_labels=edge_labels,
+                font_size=10, font_family=font_prop.get_name()
+            )
             plt.title("TPPP 영역 간 인지 흐름 구조 (DiGraph)", fontproperties=font_prop)
             st.pyplot(plt)
 
@@ -547,8 +548,16 @@ with tab3:
 
             st.markdown("### 📊 TPPP 상관 행렬 히트맵")
             fig2, ax2 = plt.subplots()
-            sns.heatmap(block_corr.astype(float), annot=True, cmap='coolwarm', vmin=-1, vmax=1,
-                        fmt=".2f", linewidths=0.5, ax=ax2, cbar=True)
+            sns.heatmap(
+                block_corr.astype(float),
+                annot=True,
+                cmap='coolwarm',
+                vmin=-1, vmax=1,
+                fmt=".2f",
+                linewidths=0.5,
+                ax=ax2,
+                cbar=True
+            )
             ax2.set_title("TPPP 블록 간 상관 히트맵", fontproperties=font_prop)
             ax2.set_xticklabels(ax2.get_xticklabels(), fontproperties=font_prop)
             ax2.set_yticklabels(ax2.get_yticklabels(), fontproperties=font_prop)
