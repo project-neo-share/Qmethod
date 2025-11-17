@@ -320,7 +320,7 @@ with st.sidebar:
         "선택 문항 수": [counts[i] for i in range(1, 6)],
         "최대 허용 개수": [MAX_COUNT[i] for i in range(1, 6)],
     })
-    st.dataframe(df_counts, width="content")
+    st.dataframe(df_counts, use_container_width=True)
 
     fig = go.Figure(data=[
         go.Bar(name="선택 문항 수", x=LIKERT, y=[counts[i] for i in range(1, 6)]),
