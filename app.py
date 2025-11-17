@@ -36,7 +36,7 @@ DATA_PATH = "responses.csv"
 EPS = 1e-8
 EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
-# Likert 스케일 및 허용 개수 (24문항 기준 Q-sort형 분포: 2 + 5 + 10 + 5 + 2 = 24)
+# Likert 스케일 및 허용 개수 (24문항 기준 Q-sort형 분포 예시: 2 + 5 + 10 + 5 + 2 = 24)
 LIKERT = ["전혀 동의하지 않음", "동의하지 않음", "보통이다", "동의함", "매우 동의함"]
 MAX_COUNT = {
     1: 2,   # 전혀 동의하지 않음
@@ -312,21 +312,20 @@ with st.sidebar:
 
     st.subheader("📊 실시간 척도 현황")
 
-    # 세션 상태 기반 카운팅
-    counts = calc_scale_counts(st.session_state["answers"])
+    counts_sidebar = calc_scale_counts(st.session_state["answers"])
 
     if st.button("🔄 새로고침"):
         st.rerun()
 
     df_counts = pd.DataFrame({
         "척도": LIKERT,
-        "선택 문항 수": [counts[i] for i in range(1, 6)],
+        "선택 문항 수": [counts_sidebar[i] for i in range(1, 6)],
         "최대 허용 개수": [MAX_COUNT[i] for i in range(1, 6)],
     })
     st.dataframe(df_counts, use_container_width=True)
 
     fig = go.Figure(data=[
-        go.Bar(name="선택 문항 수", x=LIKERT, y=[counts[i] for i in range(1, 6)]),
+        go.Bar(name="선택 문항 수", x=LIKERT, y=[counts_sidebar[i] for i in range(1, 6)]),
         go.Bar(name="최대 허용 개수", x=LIKERT, y=[MAX_COUNT[i] for i in range(1, 6)])
     ])
     fig.update_layout(
@@ -419,23 +418,46 @@ with tab1:
 
     # 제출 버튼 – 현재 session_state["answers"]를 그대로 저장
     if st.button("제출하기"):
+        # 1) 이메일 검증
         if not is_valid_email(email):
             st.error("올바른 이메일 주소를 입력해 주세요.")
         else:
-            responses = dict(st.session_state["answers"])
-            responses["email"] = email.strip()
+            # 2) 응답 분포 검증 (MAX_COUNT 초과 여부 체크)
+            counts_current = calc_scale_counts(st.session_state["answers"])
+            over = {
+                i: counts_current[i]
+                for i in counts_current
+                if counts_current[i] > MAX_COUNT[i]
+            }
 
-            df_new = pd.DataFrame([responses])
-            if os.path.exists(DATA_PATH):
-                df_old = pd.read_csv(DATA_PATH)
-                df_all = pd.concat([df_old, df_new], ignore_index=True)
+            if over:
+                # 초과된 척도별로 상세 메시지
+                lines = []
+                for i, cnt in over.items():
+                    lines.append(
+                        f"- '{LIKERT[i-1]}' 선택 문항 수: {cnt}개 (허용 {MAX_COUNT[i]}개 이내)"
+                    )
+                st.error(
+                    "응답 분포가 허용 개수를 초과했습니다. "
+                    "사이드바의 '최대 허용 개수'를 참고하여 아래 척도의 개수를 조정해 주세요.\n\n"
+                    + "\n".join(lines)
+                )
             else:
-                df_all = df_new
+                # 3) 분포가 허용 범위 이내이면 저장
+                responses = dict(st.session_state["answers"])
+                responses["email"] = email.strip()
 
-            if save_csv_safe(df_all, DATA_PATH):
-                st.success("응답이 저장되었습니다.")
-                if st.session_state.get("auto_sync", True):
-                    push_to_github(DATA_PATH)
+                df_new = pd.DataFrame([responses])
+                if os.path.exists(DATA_PATH):
+                    df_old = pd.read_csv(DATA_PATH)
+                    df_all = pd.concat([df_old, df_new], ignore_index=True)
+                else:
+                    df_all = df_new
+
+                if save_csv_safe(df_all, DATA_PATH):
+                    st.success("응답이 저장되었습니다.")
+                    if st.session_state.get("auto_sync", True):
+                        push_to_github(DATA_PATH)
 
 # ---------------------------------
 # Tab 2: 유형 분석 / TPPP 프로파일링
