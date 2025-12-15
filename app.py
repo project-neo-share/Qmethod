@@ -405,7 +405,7 @@ with tab1:
     with col1:
         expertise = st.selectbox(
             "1) 나는 다음 분야의 전문가이다",
-            ["전력망 인프라", "데이터센터 운영", "플랫폼 구축"],
+            ["데이터센터/IT산업", "전력/에너지 산업", "공공/정책연구"],
             key="expertise_input"
         )
     with col2:
@@ -420,6 +420,18 @@ with tab1:
         ["학계", "산업계", "협회/출연연/공공기관"],
         key="affiliation_input"
     )
+    region = st.selectbox(
+        "4) 거주 지역",
+        ["수도권", "비수도권"],
+        key="region_input"
+    )
+
+    perspective = st.selectbox(
+        "5) 데이터센터 산업과 전력 정책에서, 귀하가 개인적으로 더 우선시되어야 한다고 믿는 가치는 무엇입니까?",
+        ["전력망 안정성과 공급 신뢰도", "디지털 산업 발전과 속도", "환경 보호와 탄소 중립", "지역 균형 발전"],
+        key="perspective_input"
+    )
+    
     st.markdown("---") # 구분선 추가
     # ==========================================
 
@@ -476,6 +488,8 @@ with tab1:
                 responses["expertise"] = expertise
                 responses["experience_years"] = experience_years
                 responses["affiliation"] = affiliation
+                responses["region"] = region
+                responses["perspective"] = perspective
 
                 df_new = pd.DataFrame([responses])
                 if os.path.exists(DATA_PATH):
