@@ -1,8 +1,8 @@
 """
-Q-Method Streamlit Application
+Q-Method Survey - Data Center Sustainability
 
 Author      : Prof. Dr. Songhee Kang  
-Last Update : 2025-12-08  
+Last Update : 2025-12-15  
 Description : Likert-based Q-Method survey tool with GitHub push integration
 """
 
@@ -496,58 +496,101 @@ with tab2:
     if os.path.exists(DATA_PATH):
         df = pd.read_csv(DATA_PATH)
         st.subheader("📈 유형 분석 및 TPPP 영역별 프로파일링")
-        if len(df) >= 5:
-            df_numeric = df.select_dtypes(include=[np.number])
-            # Drop extra numeric columns if they exist (like experience_years) to avoid factor analysis error
-            # 문항(Q01~Q24)만 선택하도록 필터링
-            q_cols = [c for c in df_numeric.columns if c.startswith("Q")]
-            df_numeric_q = df_numeric[q_cols]
 
-            noise = np.random.normal(0, 0.001, df_numeric_q.shape)
-            df_noise = df_numeric_q + noise
-            df_noise_numeric = df_noise.apply(pd.to_numeric, errors='coerce')
-            df_noise_numeric = df_noise_numeric.dropna()
-
-            fa_temp = FactorAnalyzer(rotation=None)
-            
-            fa_temp.fit(df_noise_numeric)
-            eigen_values, _ = fa_temp.get_eigenvalues()
-            n_factors = sum(eigen_values >= 1.0)
-
-            st.info(f"🔍 고유값 1.0 이상 기준, 추출된 요인 수: {n_factors}개")
-
-            fa = FactorAnalyzer(n_factors=n_factors, rotation='varimax')
-            fa.fit(df_noise_numeric)
-
-            loadings = pd.DataFrame(
-                fa.loadings_,
-                index=[f"Q{idx+1:02d}" for idx in range(df_numeric_q.shape[1])],
-                columns=[f"Type{i+1}" for i in range(n_factors)]
-            )
-
-            st.write("📌 유형 부하 행렬:")
-            st.dataframe(loadings)
-
-            st.write("📊 유형별 TPPP 평균 프로파일")
-            result = []
-            for factor in loadings.columns:
-                scores = []
-                for sec, idxs in section_map.items():
-                    mean = loadings.loc[[f"Q{i+1:02d}" for i in idxs], factor].mean()
-                    scores.append((sec, mean))
-                row = pd.DataFrame(dict(scores), index=[factor])
-                result.append(row)
-            summary = pd.concat(result)
-            st.dataframe(summary.style.background_gradient(axis=1, cmap='Blues'))
-
-            fig, ax = plt.subplots()
-            summary.T.plot(kind='bar', ax=ax)
-            ax.set_title("유형별 TPPP 영역 점수", fontproperties=font_prop)
-            st.pyplot(fig)
+        # 1. 문항 컬럼(Q01~Q24) 식별
+        q_cols = [c for c in df.columns if c.startswith("Q")]
+        
+        if not q_cols:
+             st.warning("데이터에 문항(Q) 컬럼이 없습니다.")
         else:
-            st.warning("최소 5명의 응답이 필요합니다.")
+            # 2. 강제 수치형 변환 (문자열 등 비수치 데이터 NaN 처리)
+            df_q = df[q_cols].apply(pd.to_numeric, errors='coerce')
+            
+            # 3. 결측치(NaN) 제거 후 샘플 수 확인
+            #    (전처리 과정에서 유효하지 않은 응답이 제거될 수 있으므로 여기서 개수 확인)
+            df_clean = df_q.dropna()
+
+            if len(df_clean) >= 5:
+                # 4. 노이즈 추가 (Singular Matrix 오류 방지)
+                #    이미 df_clean은 순수 수치형이므로 바로 연산 가능
+                noise = np.random.normal(0, 0.001, df_clean.shape)
+                df_final = df_clean + noise
+
+                # ---------------------------------------------------------
+                # 요인 수 결정 (Scree Plot 기준)
+                # ---------------------------------------------------------
+                fa_temp = FactorAnalyzer(rotation=None)
+                # [수정] 정제된 데이터(df_final) 사용
+                fa_temp.fit(df_final) 
+                
+                eigen_values, _ = fa_temp.get_eigenvalues()
+                n_factors = sum(eigen_values >= 1.0)
+                
+                # 고유값이 모두 1.0 미만인 예외 상황 방어
+                if n_factors < 1:
+                    n_factors = 2 
+
+                st.info(f"🔍 고유값 1.0 이상 기준, 추출된 요인 수: {n_factors}개")
+
+                # ---------------------------------------------------------
+                # 최종 요인 분석 (Varimax 회전)
+                # ---------------------------------------------------------
+                fa = FactorAnalyzer(n_factors=n_factors, rotation='varimax')
+                # [수정] 정제된 데이터(df_final) 사용
+                fa.fit(df_final)
+
+                loadings = pd.DataFrame(
+                    fa.loadings_,
+                    index=df_clean.columns, # Q01, Q02...
+                    columns=[f"Type{i+1}" for i in range(n_factors)]
+                )
+
+                st.write("📌 유형 부하 행렬:")
+                st.dataframe(loadings)
+
+                # ---------------------------------------------------------
+                # TPPP 영역별 점수 계산
+                # ---------------------------------------------------------
+                st.write("📊 유형별 TPPP 평균 프로파일")
+                result = []
+                
+                # section_map의 문항 인덱스가 실제 데이터에 존재하는지 확인하며 계산
+                for factor in loadings.columns:
+                    scores = []
+                    for sec, idxs in section_map.items():
+                        # section_map은 0-based index, 컬럼명은 1-based (Q01...)
+                        target_cols = [f"Q{i+1:02d}" for i in idxs]
+                        # 실제 로딩 행렬에 존재하는 컬럼만 필터링 (KeyError 방지)
+                        valid_cols = [c for c in target_cols if c in loadings.index]
+                        
+                        if valid_cols:
+                            mean_val = loadings.loc[valid_cols, factor].mean()
+                            scores.append((sec, mean_val))
+                    
+                    if scores:
+                        row = pd.DataFrame(dict(scores), index=[factor])
+                        result.append(row)
+                
+                if result:
+                    summary = pd.concat(result)
+                    st.dataframe(summary.style.background_gradient(axis=1, cmap='Blues'))
+
+                    fig, ax = plt.subplots()
+                    summary.T.plot(kind='bar', ax=ax)
+                    
+                    if 'font_prop' in globals() or 'font_prop' in locals():
+                        ax.set_title("유형별 TPPP 영역 점수", fontproperties=font_prop)
+                    else:
+                        ax.set_title("TPPP Score by Type")
+                        
+                    st.pyplot(fig)
+                else:
+                    st.error("영역별 점수를 계산할 수 없습니다. 문항 매핑을 확인해주세요.")
+
+            else:
+                st.warning(f"유효한 응답이 부족합니다. (현재 유효 응답: {len(df_clean)}건 / 최소 필요: 5건)\n중간에 결측치가 있거나 숫자가 아닌 응답이 포함되어 제외되었을 수 있습니다.")
     else:
-        st.info("응답 데이터가 없습니다.")
+        st.info("응답 데이터 파일이 없습니다.")
 
 # ---------------------------------
 # Tab 3: TPPP 인지 흐름 / 피드백 구조
