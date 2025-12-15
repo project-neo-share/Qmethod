@@ -511,7 +511,7 @@ with tab2:
 
             fa_temp = FactorAnalyzer(rotation=None)
             
-            fa_temp.fit(df_noise)
+            fa_temp.fit(df_noise_numeric)
             eigen_values, _ = fa_temp.get_eigenvalues()
             n_factors = sum(eigen_values >= 1.0)
 
