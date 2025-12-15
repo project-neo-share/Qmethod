@@ -600,76 +600,134 @@ with tab3:
         df = pd.read_csv(DATA_PATH)
         st.subheader("🧠 TPPP 인지 흐름 및 피드백 구조 요약")
 
-        if len(df) >= 5:
-            df_numeric = df.select_dtypes(include=[np.number])
-            # 문항(Q01~Q24)만 선택
-            q_cols = [c for c in df_numeric.columns if c.startswith("Q")]
-            df_numeric_q = df_numeric[q_cols]
+        # 1. 문항 컬럼(Q01~Q24) 식별
+        q_cols = [c for c in df.columns if c.startswith("Q")]
 
-            noise = np.random.normal(0, 0.001, df_numeric_q.shape)
-            df_n = df_numeric_q + noise
-
-            corr = df_n.corr()
-            tp_labels = list(section_map.keys())
-            block_corr = pd.DataFrame(index=tp_labels, columns=tp_labels, dtype=float)
-
-            for sec1, idxs1 in section_map.items():
-                for sec2, idxs2 in section_map.items():
-                    sub_corrs = [corr.iloc[i, j] for i in idxs1 for j in idxs2 if i != j]
-                    block_corr.loc[sec1, sec2] = np.mean(sub_corrs)
-
-            DG = nx.DiGraph()
-            for i in tp_labels:
-                DG.add_node(i)
-
-            for i in tp_labels:
-                for j in tp_labels:
-                    if i != j:
-                        weight_ij = block_corr.loc[i, j]
-                        weight_ji = block_corr.loc[j, i]
-                        if weight_ij > weight_ji and weight_ij > 0.4:
-                            DG.add_edge(i, j, weight=round(weight_ij, 2))
-
-            st.markdown("### 🔄 TPPP 인지 흐름 방향 그래프 (DiGraph)")
-            pos = nx.circular_layout(DG)
-            plt.figure(figsize=(6, 6))
-            nx.draw_networkx_nodes(DG, pos, node_color='skyblue', node_size=2000)
-            nx.draw_networkx_labels(DG, pos, font_size=12, font_family=font_prop.get_name())
-            nx.draw_networkx_edges(DG, pos, width=2, arrows=True, arrowstyle='-|>')
-            edge_labels = {(u, v): f"{d['weight']}" for u, v, d in DG.edges(data=True)}
-            nx.draw_networkx_edge_labels(
-                DG, pos, edge_labels=edge_labels,
-                font_size=10, font_family=font_prop.get_name()
-            )
-            plt.title("TPPP 영역 간 인지 흐름 구조 (DiGraph)", fontproperties=font_prop)
-            st.pyplot(plt)
-
-            st.markdown("### 🔁 피드백 루프 구조 감지 결과")
-            cycles = [cycle for cycle in nx.simple_cycles(DG) if len(cycle) >= 3]
-
-            if cycles:
-                for i, loop in enumerate(cycles, 1):
-                    st.markdown(f"- 루프 {i}: {' → '.join(loop)} → {loop[0]}")
-            else:
-                st.info("루프(자기강화 피드백 구조)는 발견되지 않았습니다.")
-
-            st.markdown("### 📊 TPPP 상관 행렬 히트맵")
-            fig2, ax2 = plt.subplots()
-            sns.heatmap(
-                block_corr.astype(float),
-                annot=True,
-                cmap='coolwarm',
-                vmin=-1, vmax=1,
-                fmt=".2f",
-                linewidths=0.5,
-                ax=ax2,
-                cbar=True
-            )
-            ax2.set_title("TPPP 블록 간 상관 히트맵", fontproperties=font_prop)
-            ax2.set_xticklabels(ax2.get_xticklabels(), fontproperties=font_prop)
-            ax2.set_yticklabels(ax2.get_yticklabels(), fontproperties=font_prop)
-            st.pyplot(fig2)
+        if not q_cols:
+             st.warning("데이터에 문항(Q) 컬럼이 없습니다.")
         else:
-            st.warning("최소 5명의 응답이 필요합니다.")
+            # 2. 강제 수치형 변환 및 결측치 제거 (안전성 확보)
+            df_q = df[q_cols].apply(pd.to_numeric, errors='coerce')
+            df_clean = df_q.dropna()
+
+            if len(df_clean) >= 5:
+                # 3. 노이즈 추가 (상관분석 시 값 중복으로 인한 오류 방지)
+                noise = np.random.normal(0, 0.001, df_clean.shape)
+                df_n = df_clean + noise
+
+                # 4. 상관계수 행렬 계산
+                corr = df_n.corr()
+                
+                # TPPP 블록 간 평균 상관계수 계산
+                tp_labels = list(section_map.keys())
+                block_corr = pd.DataFrame(index=tp_labels, columns=tp_labels, dtype=float)
+
+                for sec1, idxs1 in section_map.items():
+                    for sec2, idxs2 in section_map.items():
+                        # 실제 데이터에 존재하는 컬럼 인덱스만 추출
+                        valid_idxs1 = [i for i in idxs1 if f"Q{i+1:02d}" in df_n.columns]
+                        valid_idxs2 = [j for j in idxs2 if f"Q{j+1:02d}" in df_n.columns]
+                        
+                        # 인덱스를 컬럼명으로 변환하여 loc 사용
+                        cols1 = [f"Q{i+1:02d}" for i in valid_idxs1]
+                        cols2 = [f"Q{j+1:02d}" for j in valid_idxs2]
+
+                        if cols1 and cols2:
+                            # 블록 간 모든 문항 쌍의 상관계수 추출 (자기 자신 제외)
+                            sub_corrs = []
+                            for c1 in cols1:
+                                for c2 in cols2:
+                                    if c1 != c2:
+                                        sub_corrs.append(corr.loc[c1, c2])
+                            
+                            if sub_corrs:
+                                block_corr.loc[sec1, sec2] = np.mean(sub_corrs)
+                            else:
+                                block_corr.loc[sec1, sec2] = 0.0
+                        else:
+                            block_corr.loc[sec1, sec2] = 0.0
+
+                # 5. 네트워크 그래프 (DiGraph) 생성
+                DG = nx.DiGraph()
+                for i in tp_labels:
+                    DG.add_node(i)
+
+                for i in tp_labels:
+                    for j in tp_labels:
+                        if i != j:
+                            weight_ij = block_corr.loc[i, j]
+                            weight_ji = block_corr.loc[j, i]
+                            # 방향성 결정: 상관성이 더 높고, 일정 기준(0.4) 이상인 쪽으로 화살표
+                            if weight_ij > weight_ji and weight_ij > 0.4:
+                                DG.add_edge(i, j, weight=round(weight_ij, 2))
+
+                # 6. 네트워크 그래프 시각화
+                st.markdown("### 🔄 TPPP 인지 흐름 방향 그래프 (DiGraph)")
+                
+                # [수정] plt.figure() 대신 fig, ax 사용 (Streamlit 호환성)
+                fig_net, ax_net = plt.subplots(figsize=(6, 6))
+                pos = nx.circular_layout(DG)
+                
+                nx.draw_networkx_nodes(DG, pos, node_color='skyblue', node_size=2000, ax=ax_net)
+                
+                # 폰트 속성 적용 (한글 깨짐 방지)
+                font_name = font_prop.get_name() if 'font_prop' in globals() else 'sans-serif'
+                nx.draw_networkx_labels(DG, pos, font_size=12, font_family=font_name, ax=ax_net)
+                
+                nx.draw_networkx_edges(DG, pos, width=2, arrows=True, arrowstyle='-|>', ax=ax_net)
+                
+                edge_labels = {(u, v): f"{d['weight']}" for u, v, d in DG.edges(data=True)}
+                nx.draw_networkx_edge_labels(
+                    DG, pos, edge_labels=edge_labels,
+                    font_size=10, font_family=font_name, ax=ax_net
+                )
+                
+                if 'font_prop' in globals():
+                    ax_net.set_title("TPPP 영역 간 인지 흐름 구조 (DiGraph)", fontproperties=font_prop)
+                else:
+                    ax_net.set_title("TPPP Cognitive Flow Structure")
+                
+                # 축 제거
+                ax_net.axis('off')
+                st.pyplot(fig_net)
+
+                # 7. 피드백 루프 감지
+                st.markdown("### 🔁 피드백 루프 구조 감지 결과")
+                try:
+                    cycles = [cycle for cycle in nx.simple_cycles(DG) if len(cycle) >= 3]
+                    if cycles:
+                        for i, loop in enumerate(cycles, 1):
+                            st.markdown(f"- **루프 {i}**: {' → '.join(loop)} → {loop[0]}")
+                    else:
+                        st.info("루프(자기강화 피드백 구조)는 발견되지 않았습니다.")
+                except Exception as e:
+                    st.warning(f"루프 감지 중 오류 발생: {e}")
+
+                # 8. 히트맵 시각화
+                st.markdown("### 📊 TPPP 상관 행렬 히트맵")
+                fig_heat, ax_heat = plt.subplots()
+                
+                sns.heatmap(
+                    block_corr.astype(float),
+                    annot=True,
+                    cmap='coolwarm',
+                    vmin=-1, vmax=1,
+                    fmt=".2f",
+                    linewidths=0.5,
+                    ax=ax_heat,
+                    cbar=True
+                )
+                
+                if 'font_prop' in globals():
+                    ax_heat.set_title("TPPP 블록 간 상관 히트맵", fontproperties=font_prop)
+                    ax_heat.set_xticklabels(ax_heat.get_xticklabels(), fontproperties=font_prop)
+                    ax_heat.set_yticklabels(ax_heat.get_yticklabels(), fontproperties=font_prop)
+                else:
+                    ax_heat.set_title("TPPP Block Correlation Heatmap")
+                    
+                st.pyplot(fig_heat)
+
+            else:
+                st.warning("최소 5명의 유효 응답이 필요합니다.")
     else:
         st.info("응답 데이터가 없습니다.")
