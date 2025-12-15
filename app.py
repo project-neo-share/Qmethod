@@ -507,7 +507,6 @@ with tab2:
             df_noise = df_numeric_q + noise
             df_noise_numeric = df_noise.apply(pd.to_numeric, errors='coerce')
             df_noise_numeric = df_noise_numeric.dropna()
-            df_noise_numeric = df_noise.select_dtypes(include=[np.number])
 
             fa_temp = FactorAnalyzer(rotation=None)
             
@@ -518,7 +517,7 @@ with tab2:
             st.info(f"🔍 고유값 1.0 이상 기준, 추출된 요인 수: {n_factors}개")
 
             fa = FactorAnalyzer(n_factors=n_factors, rotation='varimax')
-            fa.fit(df_noise)
+            fa.fit(df_noise_numeric)
 
             loadings = pd.DataFrame(
                 fa.loadings_,
