@@ -505,8 +505,12 @@ with tab2:
 
             noise = np.random.normal(0, 0.001, df_numeric_q.shape)
             df_noise = df_numeric_q + noise
+            df_noise_numeric = df_noise.apply(pd.to_numeric, errors='coerce')
+            df_noise_numeric = df_noise_numeric.dropna()
+            df_noise_numeric = df_noise.select_dtypes(include=[np.number])
 
             fa_temp = FactorAnalyzer(rotation=None)
+            
             fa_temp.fit(df_noise)
             eigen_values, _ = fa_temp.get_eigenvalues()
             n_factors = sum(eigen_values >= 1.0)
