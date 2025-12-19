@@ -1,15 +1,17 @@
 # -*- coding: utf-8 -*-
 """
-General Q-Methodology Analysis (Single Dataset) - TPPP Framework
+General Q-Methodology Analysis (Single Dataset) - TPPP Framework & Network Analysis
 - Purpose: Q-factor analysis with 'Technology, People, Place, Process' Framework.
 - Input: CSV data (Q01~Q24 + Metadata)
 - Features:
   1. Factor Extraction & Rotation (PCA/Varimax)
   2. Factor Arrays (Z-scores)
   3. Distinguishing Statements
-  4. [NEW] TPPP Framework Mapping & Analysis
+  4. TPPP Framework Mapping & Analysis
      - Correlation Matrix (Feedback Loops)
      - Type-based Radar Charts (Structural Perception)
+  5. Network Analysis (Visualizing Feedback Loops)
+  6. [NEW] Factor Optimization (Scree Plot & Kaiser Rule)
 """
 
 import io
@@ -19,6 +21,7 @@ import streamlit as st
 import plotly.express as px
 import plotly.graph_objects as go
 from scipy.stats import spearmanr, pearsonr, norm as normal_dist
+import itertools
 
 # ==========================================
 # 1. Configuration & Constants
@@ -255,6 +258,107 @@ def calculate_type_tppp_profile(factor_arrays, q_labels, mapping):
         
     return pd.DataFrame(profiles)
 
+def create_network_graph(corr_matrix, threshold):
+    """Creates a Network Graph for TPPP Feedback Loops using Plotly"""
+    
+    # 4 Nodes fixed position (Circular)
+    nodes = list(corr_matrix.columns)
+    # Positions: Tech(Top), People(Right), Place(Bottom), Process(Left)
+    pos = {
+        nodes[0]: (0, 1),   # Tech
+        nodes[1]: (1, 0),   # People
+        nodes[2]: (0, -1),  # Place
+        nodes[3]: (-1, 0)   # Process
+    }
+    
+    edge_x = []
+    edge_y = []
+    edge_text = []
+    
+    # Add Edges if corr > threshold
+    for i in range(len(nodes)):
+        for j in range(i+1, len(nodes)):
+            n1, n2 = nodes[i], nodes[j]
+            corr_val = corr_matrix.iloc[i, j]
+            
+            if abs(corr_val) >= threshold:
+                x0, y0 = pos[n1]
+                x1, y1 = pos[n2]
+                edge_x.extend([x0, x1, None])
+                edge_y.extend([y0, y1, None])
+                edge_text.append(f"{n1}-{n2}: {corr_val:.2f}")
+
+    # Edge Trace
+    edge_trace = go.Scatter(
+        x=edge_x, y=edge_y,
+        line=dict(width=2, color='#888'),
+        hoverinfo='text',
+        text=str(edge_text),
+        mode='lines')
+
+    # Node Trace
+    node_x = [pos[n][0] for n in nodes]
+    node_y = [pos[n][1] for n in nodes]
+    
+    node_trace = go.Scatter(
+        x=node_x, y=node_y,
+        mode='markers+text',
+        text=nodes,
+        textposition="top center",
+        hoverinfo='text',
+        marker=dict(
+            showscale=False,
+            color='#1f77b4',
+            size=30,
+            line_width=2))
+
+    fig = go.Figure(data=[edge_trace, node_trace],
+                 layout=go.Layout(
+                    title=f'TPPP Feedback Loops (Correlation > {threshold})',
+                    title_font_size=16,
+                    showlegend=False,
+                    hovermode='closest',
+                    margin=dict(b=20,l=5,r=5,t=40),
+                    xaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
+                    yaxis=dict(showgrid=False, zeroline=False, showticklabels=False))
+                )
+    return fig
+
+def detect_strongest_loops(corr_matrix):
+    """Detects 3-node feedback loops based on correlation strength"""
+    cols = corr_matrix.columns.tolist()
+    triads = []
+    
+    # Iterate all combinations of 3
+    for triad in itertools.combinations(cols, 3):
+        a, b, c = triad
+        # Sum of correlations (Strength of loop)
+        score = abs(corr_matrix.loc[a, b]) + abs(corr_matrix.loc[b, c]) + abs(corr_matrix.loc[c, a])
+        avg_score = score / 3
+        triads.append({
+            "Loop": f"{a} ↔ {b} ↔ {c}",
+            "Strength (Avg Corr)": avg_score,
+            "Links": [f"{corr_matrix.loc[a,b]:.2f}", f"{corr_matrix.loc[b,c]:.2f}", f"{corr_matrix.loc[c,a]:.2f}"]
+        })
+    
+    return pd.DataFrame(triads).sort_values("Strength (Avg Corr)", ascending=False)
+
+def plot_scree(eigenvalues):
+    """Plots Scree Plot for Factor Selection"""
+    x = range(1, len(eigenvalues) + 1)
+    
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(x=list(x), y=eigenvalues, mode='lines+markers', name='Eigenvalue'))
+    fig.add_hline(y=1.0, line_dash="dash", line_color="red", annotation_text="Kaiser Criterion (1.0)")
+    
+    fig.update_layout(
+        title="Scree Plot (Eigenvalues)",
+        xaxis_title="Factor Number",
+        yaxis_title="Eigenvalue",
+        template="plotly_white"
+    )
+    return fig
+
 # ==========================================
 # 3. Main UI
 # ==========================================
@@ -295,16 +399,37 @@ if uploaded_file:
     engine = QEngine(df_q, n_factors=n_factors).fit()
     assignments = strict_respondent_assignment(engine.loadings, threshold=assign_thr, min_gap=assign_gap)
     
+    # Calculate scores for TPPP analysis
+    tppp_scores = calculate_tppp_scores(df_q, TPPP_CATEGORIES)
+    corr_matrix = tppp_scores.corr(method='spearman')
+
     # Tabs
-    tab1, tab2, tab3, tab4 = st.tabs([
+    tab1, tab2, tab3, tab4, tab5 = st.tabs([
         "1. Factor Structure", 
-        "2. TPPP Framework Analysis", 
-        "3. Distinguishing Statements",
-        "4. Raw Data & Arrays"
+        "2. TPPP Profiles (Radar)", 
+        "3. TPPP Network & Loops",
+        "4. Distinguishing Statements",
+        "5. Raw Data & Arrays"
     ])
     
     # --- Tab 1: Structure ---
     with tab1:
+        st.header("1. Factor Optimization & Structure")
+        
+        # [NEW] Factor Optimization Section
+        col_opt1, col_opt2 = st.columns([2, 1])
+        with col_opt1:
+            st.subheader("Optimal Factors (Scree Plot & Kaiser)")
+            st.plotly_chart(plot_scree(engine.eigenvalues[:10]), use_container_width=True)
+        
+        with col_opt2:
+            st.markdown("<br><br>", unsafe_allow_html=True) # Spacer
+            kaiser_k = sum(engine.eigenvalues > 1.0)
+            st.metric("Kaiser Criterion (k)", f"{kaiser_k} Factors", "Eigenvalue > 1.0")
+            st.info(f"데이터 통계상 **{kaiser_k}개 요인**이 권장됩니다. (그래프의 꺾임새를 확인하세요)")
+
+        st.divider()
+
         st.subheader("Respondents by Type")
         counts = pd.Series(assignments).value_counts().sort_index()
         c1, c2 = st.columns([1, 2])
@@ -334,37 +459,11 @@ if uploaded_file:
                 for idx, val in bot3.items():
                     st.caption(f"**{idx}** ({Q_TO_TPPP.get(idx)}): {Q_MAP[idx][:30]}... (z={val:.2f})")
 
-    # --- Tab 2: TPPP Analysis (Core) ---
+    # --- Tab 2: TPPP Profiles ---
     with tab2:
-        st.header("TPPP Framework Analysis")
-        st.markdown("""
-        **Technology, People, Place, Process** 4가지 차원 간의 상호작용과 유형별 인식 구조를 분석합니다.
-        """)
-        
-        with st.expander("TPPP Categorization Detail"):
-            for cat, items in TPPP_CATEGORIES.items():
-                st.write(f"**{cat}**: {', '.join(items)}")
-
-        # 1. Feedback Loops (Correlation)
-        st.subheader("1. Feedback Loops (Correlations between Concepts)")
-        tppp_scores = calculate_tppp_scores(df_q, TPPP_CATEGORIES)
-        corr_matrix = tppp_scores.corr(method='spearman')
-        
-        c1, c2 = st.columns([1, 1])
-        with c1:
-            st.dataframe(corr_matrix.style.background_gradient(cmap="coolwarm", vmin=-1, vmax=1).format("{:.3f}"))
-        with c2:
-            # Heatmap viz
-            fig_corr = px.imshow(corr_matrix, text_auto=True, aspect="auto", color_continuous_scale="RdBu_r", title="TPPP Correlation Matrix")
-            st.plotly_chart(fig_corr, use_container_width=True)
-            
-        st.info("높은 상관관계(붉은색)는 두 개념 간에 강한 피드백 루프(상호 강화)가 존재함을 시사합니다.")
-
-        # 2. Radar Chart (Type Profiles)
-        st.subheader("2. Structural Perception by Type (Radar Chart)")
+        st.header("TPPP Perception Profiles (Radar Chart)")
         type_profiles = calculate_type_tppp_profile(engine.factor_arrays, q_cols, TPPP_CATEGORIES)
         
-        # Radar Chart Data Prep
         categories = list(type_profiles.index)
         fig = go.Figure()
 
@@ -378,18 +477,44 @@ if uploaded_file:
 
         fig.update_layout(
             polar=dict(
-                radialaxis=dict(visible=True, range=[-1.5, 1.5]) # Z-score range approx
+                radialaxis=dict(visible=True, range=[-1.5, 1.5]) 
             ),
             showlegend=True,
             title="Type-specific TPPP Weighting (Z-scores)"
         )
         st.plotly_chart(fig, use_container_width=True)
-        
         st.dataframe(type_profiles.style.background_gradient(cmap="RdBu_r", vmin=-1, vmax=1).format("{:.3f}"))
-        st.caption("값이 양수(+)이면 해당 차원을 중요하게 생각하거나 긍정적으로 인식하고, 음수(-)이면 상대적으로 소홀하거나 부정적으로 인식합니다.")
 
-    # --- Tab 3: Distinguishing ---
+    # --- Tab 3: TPPP Network & Loops (NEW) ---
     with tab3:
+        st.header("TPPP Network Analysis & Feedback Loops")
+        st.markdown("4개 차원(기술, 사람, 장소, 절차) 간의 상관관계를 통해 **자기강화 루프(Self-reinforcing Loop)**를 탐색합니다.")
+        
+        c1, c2 = st.columns([1, 2])
+        with c1:
+            st.subheader("Settings")
+            net_threshold = st.slider("Correlation Threshold", 0.0, 0.8, 0.4, 0.05, help="이 값 이상의 상관관계만 연결선으로 표시합니다.")
+            
+            st.subheader("Correlation Matrix")
+            st.dataframe(corr_matrix.style.background_gradient(cmap="coolwarm", vmin=-1, vmax=1).format("{:.3f}"))
+            
+            st.subheader("Strongest Loop Detection (Triads)")
+            loops_df = detect_strongest_loops(corr_matrix)
+            st.dataframe(loops_df.style.format({"Strength (Avg Corr)": "{:.3f}"}))
+            st.caption("가장 강한 평균 상관관계를 가진 3자 순환 고리입니다.")
+
+        with c2:
+            st.subheader("Network Visualization")
+            fig_net = create_network_graph(corr_matrix, net_threshold)
+            st.plotly_chart(fig_net, use_container_width=True)
+            st.info("""
+            **해석 가이드:**
+            * **연결선(Edge):** 두 요소 간의 강한 상호작용을 의미합니다.
+            * **삼각형(Triangle):** 3개의 요소가 서로 강하게 연결된 경우, 한 요소의 변화가 루프를 타고 전체 시스템을 강화(Positive Feedback)하거나 약화시킬 수 있는 핵심 구조입니다.
+            """)
+
+    # --- Tab 4: Distinguishing ---
+    with tab4:
         st.subheader("Distinguishing Statements per Type")
         dist_dict = find_distinguishing_items(engine.factor_arrays, n_factors, q_cols, Q_MAP, alpha=0.05)
         
@@ -407,8 +532,8 @@ if uploaded_file:
                 else:
                     st.info("이 요인을 구별하는 문항이 없습니다.")
 
-    # --- Tab 4: Raw Data ---
-    with tab4:
+    # --- Tab 5: Raw Data ---
+    with tab5:
         st.subheader("Factor Arrays (All Items)")
         fa_df = pd.DataFrame(engine.factor_arrays, index=q_cols, columns=[f"F{i+1}" for i in range(n_factors)])
         fa_df.insert(0, "Category", [Q_TO_TPPP.get(idx) for idx in fa_df.index])
