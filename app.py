@@ -11,7 +11,8 @@ General Q-Methodology Analysis (Single Dataset) - TPPP Framework & Network Analy
      - Correlation Matrix (Feedback Loops)
      - Type-based Radar Charts (Structural Perception)
   5. Network Analysis (Visualizing Feedback Loops)
-  6. [NEW] Factor Optimization (Scree Plot & Kaiser Rule)
+  6. Factor Optimization (Scree Plot & Kaiser Rule)
+  7. [NEW] Enhanced P-Set Profiling (Demographics Integration)
 """
 
 import io
@@ -391,7 +392,7 @@ if uploaded_file:
 
     with st.sidebar:
         st.header("Analysis Settings")
-        n_factors = st.number_input("Number of Factors", 1, 10, 3)
+        n_factors = st.number_input("Number of Factors", 1, 6, 3)
         assign_thr = st.slider("Assignment Threshold (>)", 0.3, 0.7, 0.4, 0.05)
         assign_gap = st.slider("Confounded Gap (>)", 0.05, 0.3, 0.1, 0.05)
 
@@ -403,20 +404,26 @@ if uploaded_file:
     tppp_scores = calculate_tppp_scores(df_q, TPPP_CATEGORIES)
     corr_matrix = tppp_scores.corr(method='spearman')
 
+    # Prepare Metadata for P-Set Analysis
+    df_meta = df_raw[meta_cols].copy()
+    df_meta['Assigned Type'] = assignments
+    df_meta['ID'] = ids
+
     # Tabs
-    tab1, tab2, tab3, tab4, tab5 = st.tabs([
+    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
         "1. Factor Structure", 
         "2. TPPP Profiles (Radar)", 
         "3. TPPP Network & Loops",
         "4. Distinguishing Statements",
-        "5. Raw Data & Arrays"
+        "5. Raw Data & Arrays",
+        "6. P-Set Profiling (Demographics)"
     ])
     
     # --- Tab 1: Structure ---
     with tab1:
         st.header("1. Factor Optimization & Structure")
         
-        # [NEW] Factor Optimization Section
+        # Factor Optimization Section
         col_opt1, col_opt2 = st.columns([2, 1])
         with col_opt1:
             st.subheader("Optimal Factors (Scree Plot & Kaiser)")
@@ -539,6 +546,44 @@ if uploaded_file:
         fa_df.insert(0, "Category", [Q_TO_TPPP.get(idx) for idx in fa_df.index])
         fa_df.insert(1, "Statement", [Q_MAP.get(idx) for idx in fa_df.index])
         st.dataframe(fa_df.style.background_gradient(cmap="RdBu_r", subset=[f"F{i+1}" for i in range(n_factors)]))
+
+    # --- Tab 6: P-Set Profiling (NEW) ---
+    with tab6:
+        st.header("P-Set Profiling (Demographics Integration)")
+        st.markdown("각 유형(Type)에 속한 응답자들의 **인구통계학적 특성**을 교차 분석합니다.")
+        
+        if not meta_cols:
+            st.warning("데이터셋에 메타데이터 컬럼이 없습니다.")
+        else:
+            selected_meta = st.selectbox("Select Demographic Variable:", meta_cols)
+            
+            # Check if numeric (like years) or categorical
+            is_numeric_meta = pd.to_numeric(df_meta[selected_meta], errors='coerce').notna().all()
+            
+            if is_numeric_meta:
+                # Group by mean
+                st.subheader(f"Average {selected_meta} by Type")
+                df_meta_num = df_meta.copy()
+                df_meta_num[selected_meta] = pd.to_numeric(df_meta_num[selected_meta])
+                
+                avg_stats = df_meta_num.groupby('Assigned Type')[selected_meta].mean().sort_index()
+                st.bar_chart(avg_stats)
+                st.dataframe(avg_stats)
+            else:
+                # Cross-tabulation Heatmap
+                st.subheader(f"Distribution of {selected_meta} by Type")
+                ctab = pd.crosstab(df_meta['Assigned Type'], df_meta[selected_meta])
+                
+                # Plotly Heatmap
+                fig_heat = px.imshow(ctab, text_auto=True, aspect="auto", 
+                                   color_continuous_scale="Greens",
+                                   title=f"Heatmap: Type vs {selected_meta}")
+                st.plotly_chart(fig_heat, use_container_width=True)
+                
+                # Normalized (Row %)
+                st.caption("Row Percentage (Type Composition)")
+                ctab_norm = pd.crosstab(df_meta['Assigned Type'], df_meta[selected_meta], normalize='index') * 100
+                st.dataframe(ctab_norm.style.format("{:.1f}%").background_gradient(cmap="Greens", axis=1))
 
 else:
     st.info("좌측 사이드바에서 CSV 파일을 업로드해주세요.")
