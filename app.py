@@ -13,6 +13,7 @@ General Q-Methodology Analysis (Single Dataset) - TPPP Framework & Network Analy
   5. Network Analysis (Visualizing Feedback Loops)
   6. Factor Optimization (Scree Plot & Kaiser Rule)
   7. Enhanced P-Set Profiling (Demographics Integration)
+- Fix (2025-12-20): Robust styling for p-value matrix to prevent Streamlit rendering errors.
 """
 
 import io
@@ -393,6 +394,10 @@ def calculate_corr_with_pvalues(df):
                 corr, p = spearmanr(df[r], df[c])
                 corr_mat.loc[r, c] = corr
                 p_mat.loc[r, c] = p
+    
+    # Fill NaN just in case
+    corr_mat = corr_mat.fillna(0.0)
+    p_mat = p_mat.fillna(1.0) # Conservative: if calc failed, assume not significant
                 
     return corr_mat, p_mat
 
@@ -544,7 +549,8 @@ if uploaded_file:
             st.dataframe(corr_matrix.style.background_gradient(cmap="coolwarm", vmin=-1, vmax=1).format("{:.3f}"))
             
             st.subheader("P-Values")
-            st.dataframe(p_mat = p_matrix.style.applymap(lambda x: 'color: red' if x < sig_alpha else 'color: black').format("{:.4f}"))
+            # Robust styling for p-values to prevent rendering errors
+            st.dataframe(p_matrix.style.map(lambda x: 'color: red' if x < sig_alpha else 'color: black').format("{:.4f}"))
             
             st.subheader("Strongest Loop Detection (Triads)")
             loops_df = detect_strongest_loops(corr_matrix)
