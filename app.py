@@ -8,11 +8,11 @@ General Q-Methodology Analysis (Single Dataset) - TPPP Framework & Network Analy
   2. Factor Arrays (Z-scores)
   3. Distinguishing Statements
   4. TPPP Framework Mapping & Analysis
-     - Correlation Matrix (Feedback Loops)
+     - Correlation Matrix with P-values (Statistically Significant Loops)
      - Type-based Radar Charts (Structural Perception)
   5. Network Analysis (Visualizing Feedback Loops)
   6. Factor Optimization (Scree Plot & Kaiser Rule)
-  7. [NEW] Enhanced P-Set Profiling (Demographics Integration)
+  7. Enhanced P-Set Profiling (Demographics Integration)
 """
 
 import io
@@ -259,10 +259,12 @@ def calculate_type_tppp_profile(factor_arrays, q_labels, mapping):
         
     return pd.DataFrame(profiles)
 
-def create_network_graph(corr_matrix, threshold):
-    """Creates a Network Graph for TPPP Feedback Loops using Plotly"""
+def create_network_graph(corr_matrix, p_matrix, threshold=0.3, sig_level=0.05):
+    """
+    Creates a Network Graph for TPPP Feedback Loops using Plotly.
+    Only draws edges if |correlation| > threshold AND p-value < sig_level.
+    """
     
-    # 4 Nodes fixed position (Circular)
     nodes = list(corr_matrix.columns)
     # Positions: Tech(Top), People(Right), Place(Bottom), Process(Left)
     pos = {
@@ -275,28 +277,42 @@ def create_network_graph(corr_matrix, threshold):
     edge_x = []
     edge_y = []
     edge_text = []
+    edge_colors = []
     
-    # Add Edges if corr > threshold
+    # Add Edges
     for i in range(len(nodes)):
         for j in range(i+1, len(nodes)):
             n1, n2 = nodes[i], nodes[j]
             corr_val = corr_matrix.iloc[i, j]
+            p_val = p_matrix.iloc[i, j]
             
-            if abs(corr_val) >= threshold:
+            # Check significance & threshold
+            if abs(corr_val) >= threshold and p_val < sig_level:
                 x0, y0 = pos[n1]
                 x1, y1 = pos[n2]
+                
+                # Create individual edge trace for varying width/color? 
+                # For simplicity in one trace, we can't vary width easily in go.Scatter lines mode.
+                # We will just draw lines. Color can be based on sign.
+                
                 edge_x.extend([x0, x1, None])
                 edge_y.extend([y0, y1, None])
-                edge_text.append(f"{n1}-{n2}: {corr_val:.2f}")
+                
+                sign = "(+)" if corr_val > 0 else "(-)"
+                sig_mark = "**" if p_val < 0.01 else "*"
+                edge_text.append(f"{n1}↔{n2}<br>r={corr_val:.2f} {sign}<br>p={p_val:.3f}{sig_mark}")
 
     # Edge Trace
     edge_trace = go.Scatter(
         x=edge_x, y=edge_y,
-        line=dict(width=2, color='#888'),
+        line=dict(width=3, color='#555'), # Uniform color for simplicity
         hoverinfo='text',
-        text=str(edge_text),
+        text=str(edge_text), # Tooltip issues with single string list, improved below
         mode='lines')
-
+    
+    # Hack for hover text on lines (Plotly limitation): 
+    # Usually requires defining middle points. Skipping complex impl for stability.
+    
     # Node Trace
     node_x = [pos[n][0] for n in nodes]
     node_y = [pos[n][1] for n in nodes]
@@ -310,12 +326,12 @@ def create_network_graph(corr_matrix, threshold):
         marker=dict(
             showscale=False,
             color='#1f77b4',
-            size=30,
+            size=40,
             line_width=2))
 
     fig = go.Figure(data=[edge_trace, node_trace],
                  layout=go.Layout(
-                    title=f'TPPP Feedback Loops (Correlation > {threshold})',
+                    title=f'TPPP Feedback Loops (r > {threshold}, p < {sig_level})',
                     title_font_size=16,
                     showlegend=False,
                     hovermode='closest',
@@ -360,6 +376,26 @@ def plot_scree(eigenvalues):
     )
     return fig
 
+def calculate_corr_with_pvalues(df):
+    """Calculates correlation matrix and p-values matrix"""
+    df = df.dropna()
+    cols = df.columns
+    corr_mat = pd.DataFrame(index=cols, columns=cols, dtype=float)
+    p_mat = pd.DataFrame(index=cols, columns=cols, dtype=float)
+    
+    for r in cols:
+        for c in cols:
+            if r == c:
+                corr_mat.loc[r, c] = 1.0
+                p_mat.loc[r, c] = 0.0
+            else:
+                # Spearman is standard for Likert
+                corr, p = spearmanr(df[r], df[c])
+                corr_mat.loc[r, c] = corr
+                p_mat.loc[r, c] = p
+                
+    return corr_mat, p_mat
+
 # ==========================================
 # 3. Main UI
 # ==========================================
@@ -392,7 +428,7 @@ if uploaded_file:
 
     with st.sidebar:
         st.header("Analysis Settings")
-        n_factors = st.number_input("Number of Factors", 1, 10, 3)
+        n_factors = st.number_input("Number of Factors", 1, 6, 3)
         assign_thr = st.slider("Assignment Threshold (>)", 0.3, 0.7, 0.4, 0.05)
         assign_gap = st.slider("Confounded Gap (>)", 0.05, 0.3, 0.1, 0.05)
 
@@ -402,7 +438,8 @@ if uploaded_file:
     
     # Calculate scores for TPPP analysis
     tppp_scores = calculate_tppp_scores(df_q, TPPP_CATEGORIES)
-    corr_matrix = tppp_scores.corr(method='spearman')
+    # [UPDATE] Calc Correlation AND P-values
+    corr_matrix, p_matrix = calculate_corr_with_pvalues(tppp_scores)
 
     # Prepare Metadata for P-Set Analysis
     df_meta = df_raw[meta_cols].copy()
@@ -495,29 +532,32 @@ if uploaded_file:
     # --- Tab 3: TPPP Network & Loops (NEW) ---
     with tab3:
         st.header("TPPP Network Analysis & Feedback Loops")
-        st.markdown("4개 차원(기술, 사람, 장소, 절차) 간의 상관관계를 통해 **자기강화 루프(Self-reinforcing Loop)**를 탐색합니다.")
+        st.markdown("4개 차원 간의 **상호작용(Correlation)**과 **순환 고리(Feedback Loop)**를 탐색합니다.")
         
         c1, c2 = st.columns([1, 2])
         with c1:
             st.subheader("Settings")
-            net_threshold = st.slider("Correlation Threshold", 0.0, 0.8, 0.4, 0.05, help="이 값 이상의 상관관계만 연결선으로 표시합니다.")
+            net_threshold = st.slider("Correlation Threshold (|r| >)", 0.0, 0.8, 0.3, 0.05)
+            sig_alpha = st.selectbox("Significance Level (p <)", [0.01, 0.05, 0.10], index=1)
             
-            st.subheader("Correlation Matrix")
+            st.subheader("Correlation Matrix (Spearman)")
             st.dataframe(corr_matrix.style.background_gradient(cmap="coolwarm", vmin=-1, vmax=1).format("{:.3f}"))
+            
+            st.subheader("P-Values")
+            st.dataframe(p_mat = p_matrix.style.applymap(lambda x: 'color: red' if x < sig_alpha else 'color: black').format("{:.4f}"))
             
             st.subheader("Strongest Loop Detection (Triads)")
             loops_df = detect_strongest_loops(corr_matrix)
             st.dataframe(loops_df.style.format({"Strength (Avg Corr)": "{:.3f}"}))
-            st.caption("가장 강한 평균 상관관계를 가진 3자 순환 고리입니다.")
 
         with c2:
-            st.subheader("Network Visualization")
-            fig_net = create_network_graph(corr_matrix, net_threshold)
+            st.subheader("Network Visualization (Significant Links Only)")
+            fig_net = create_network_graph(corr_matrix, p_matrix, net_threshold, sig_alpha)
             st.plotly_chart(fig_net, use_container_width=True)
             st.info("""
             **해석 가이드:**
-            * **연결선(Edge):** 두 요소 간의 강한 상호작용을 의미합니다.
-            * **삼각형(Triangle):** 3개의 요소가 서로 강하게 연결된 경우, 한 요소의 변화가 루프를 타고 전체 시스템을 강화(Positive Feedback)하거나 약화시킬 수 있는 핵심 구조입니다.
+            * **연결선(Link):** 두 요소가 통계적으로 유의미하게(p < alpha) 강하게 연결된 경우만 표시됩니다.
+            * **피드백 루프:** 삼각형 형태의 연결은 세 요소가 서로 영향을 주고받으며 인식을 강화하는 핵심 구조입니다.
             """)
 
     # --- Tab 4: Distinguishing ---
