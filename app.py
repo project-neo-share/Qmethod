@@ -392,7 +392,7 @@ if uploaded_file:
 
     with st.sidebar:
         st.header("Analysis Settings")
-        n_factors = st.number_input("Number of Factors", 1, 6, 3)
+        n_factors = st.number_input("Number of Factors", 1, 10, 3)
         assign_thr = st.slider("Assignment Threshold (>)", 0.3, 0.7, 0.4, 0.05)
         assign_gap = st.slider("Confounded Gap (>)", 0.05, 0.3, 0.1, 0.05)
 
