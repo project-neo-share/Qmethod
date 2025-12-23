@@ -7,13 +7,13 @@ General Q-Methodology Analysis (Single Dataset) - TPPP Framework & Network Analy
   1. Factor Extraction & Rotation (PCA/Varimax)
   2. Factor Arrays (Z-scores)
   3. Distinguishing Statements
-  4. TPPP Framework Mapping & Analysis
+  4. TPPP Framework Mapping & Analysis (Balanced 6:6:6:6)
      - Correlation Matrix with P-values (Statistically Significant Loops)
      - Type-based Radar Charts (Structural Perception)
   5. Network Analysis (Visualizing Feedback Loops)
-  6. Factor Optimization (Scree Plot & Kaiser Rule)
+  6. Factor Optimization (Scree, Kaiser, [NEW] Parallel Analysis)
   7. Enhanced P-Set Profiling (Demographics Integration)
-- Fix (2025-12-20): Robust styling for p-value matrix to prevent Streamlit rendering errors.
+- Update (2025-12-23): Added Parallel Analysis for robust factor number estimation.
 """
 
 import io
@@ -64,7 +64,7 @@ STATEMENTS = [
 # Map Q01 -> Statement[0]
 Q_MAP = {f"Q{i+1:02d}": txt for i, txt in enumerate(STATEMENTS)}
 
-# TPPP Mapping (Based on content)
+# TPPP Mapping (Balanced 6 items each)
 TPPP_CATEGORIES = {
     "Technology": ["Q01", "Q02", "Q03", "Q04", "Q05", "Q06"], # Pure Tech features & perception
     "People (Trust)": ["Q08", "Q09", "Q10", "Q12", "Q22", "Q23"], # Trust, actors, emotion
@@ -110,6 +110,7 @@ class QEngine:
         self.factor_arrays = None
         self.explained_variance = None
         self.eigenvalues = None
+        self.simulated_eigenvalues = None
         
     def fit(self):
         # 1. Correlation (Spearman for Likert)
@@ -117,12 +118,15 @@ class QEngine:
         z_data = standardize_rows(self.data)
         R = np.nan_to_num(R, nan=0.0)
         
-        # 2. Eigen Decomposition
+        # 2. Eigen Decomposition (Observed)
         eigvals, eigvecs = np.linalg.eigh(R)
         idx = eigvals.argsort()[::-1]
         eigvals = eigvals[idx]
         eigvecs = eigvecs[:, idx]
         self.eigenvalues = eigvals
+        
+        # [NEW] Parallel Analysis (Simulated Eigenvalues)
+        self.simulated_eigenvalues = self._run_parallel_analysis(self.n_persons, self.n_items)
         
         # 3. Extract Factors
         k = self.n_factors
@@ -140,6 +144,24 @@ class QEngine:
         self.factor_arrays = self._calculate_factor_arrays(L, z_data)
         
         return self
+
+    def _run_parallel_analysis(self, n_rows, n_cols, n_iter=20):
+        """Simulates random datasets to find noise eigenvalues threshold"""
+        random_eigs = []
+        for _ in range(n_iter):
+            # Create random noise data
+            rand_data = rng.standard_normal((n_rows, n_cols))
+            # Calculate correlation (Spearman approx with Pearson on ranks or just Pearson)
+            # For speed, we use Pearson on normal noise (standard PA approach)
+            rand_R = np.corrcoef(rand_data)
+            rand_R = np.nan_to_num(rand_R, nan=0.0)
+            
+            evals, _ = np.linalg.eigh(rand_R)
+            random_eigs.append(evals[::-1]) # Sort descending
+            
+        # Average eigenvalues across iterations
+        avg_random_eigs = np.mean(random_eigs, axis=0)
+        return avg_random_eigs
 
     def _varimax(self, Phi, gamma=1.0, q=20, tol=1e-6):
         p, k = Phi.shape
@@ -261,11 +283,7 @@ def calculate_type_tppp_profile(factor_arrays, q_labels, mapping):
     return pd.DataFrame(profiles)
 
 def create_network_graph(corr_matrix, p_matrix, threshold=0.3, sig_level=0.05):
-    """
-    Creates a Network Graph for TPPP Feedback Loops using Plotly.
-    Only draws edges if |correlation| > threshold AND p-value < sig_level.
-    """
-    
+    """Creates a Network Graph for TPPP Feedback Loops using Plotly."""
     nodes = list(corr_matrix.columns)
     # Positions: Tech(Top), People(Right), Place(Bottom), Process(Left)
     pos = {
@@ -278,7 +296,6 @@ def create_network_graph(corr_matrix, p_matrix, threshold=0.3, sig_level=0.05):
     edge_x = []
     edge_y = []
     edge_text = []
-    edge_colors = []
     
     # Add Edges
     for i in range(len(nodes)):
@@ -287,14 +304,9 @@ def create_network_graph(corr_matrix, p_matrix, threshold=0.3, sig_level=0.05):
             corr_val = corr_matrix.iloc[i, j]
             p_val = p_matrix.iloc[i, j]
             
-            # Check significance & threshold
             if abs(corr_val) >= threshold and p_val < sig_level:
                 x0, y0 = pos[n1]
                 x1, y1 = pos[n2]
-                
-                # Create individual edge trace for varying width/color? 
-                # For simplicity in one trace, we can't vary width easily in go.Scatter lines mode.
-                # We will just draw lines. Color can be based on sign.
                 
                 edge_x.extend([x0, x1, None])
                 edge_y.extend([y0, y1, None])
@@ -306,13 +318,10 @@ def create_network_graph(corr_matrix, p_matrix, threshold=0.3, sig_level=0.05):
     # Edge Trace
     edge_trace = go.Scatter(
         x=edge_x, y=edge_y,
-        line=dict(width=3, color='#555'), # Uniform color for simplicity
+        line=dict(width=3, color='#555'), 
         hoverinfo='text',
-        text=str(edge_text), # Tooltip issues with single string list, improved below
+        text=str(edge_text), 
         mode='lines')
-    
-    # Hack for hover text on lines (Plotly limitation): 
-    # Usually requires defining middle points. Skipping complex impl for stability.
     
     # Node Trace
     node_x = [pos[n][0] for n in nodes]
@@ -347,10 +356,8 @@ def detect_strongest_loops(corr_matrix):
     cols = corr_matrix.columns.tolist()
     triads = []
     
-    # Iterate all combinations of 3
     for triad in itertools.combinations(cols, 3):
         a, b, c = triad
-        # Sum of correlations (Strength of loop)
         score = abs(corr_matrix.loc[a, b]) + abs(corr_matrix.loc[b, c]) + abs(corr_matrix.loc[c, a])
         avg_score = score / 3
         triads.append({
@@ -361,19 +368,24 @@ def detect_strongest_loops(corr_matrix):
     
     return pd.DataFrame(triads).sort_values("Strength (Avg Corr)", ascending=False)
 
-def plot_scree(eigenvalues):
-    """Plots Scree Plot for Factor Selection"""
-    x = range(1, len(eigenvalues) + 1)
+def plot_scree_parallel(eigenvalues, simulated_eigenvalues):
+    """Plots Scree Plot with Parallel Analysis"""
+    x = list(range(1, len(eigenvalues) + 1))
     
     fig = go.Figure()
-    fig.add_trace(go.Scatter(x=list(x), y=eigenvalues, mode='lines+markers', name='Eigenvalue'))
-    fig.add_hline(y=1.0, line_dash="dash", line_color="red", annotation_text="Kaiser Criterion (1.0)")
+    # Observed
+    fig.add_trace(go.Scatter(x=x, y=eigenvalues, mode='lines+markers', name='Observed Eigenvalue', line=dict(color='blue')))
+    # Simulated (Parallel)
+    fig.add_trace(go.Scatter(x=x, y=simulated_eigenvalues, mode='lines', name='Simulated (Noise)', line=dict(color='red', dash='dash')))
+    # Kaiser Line
+    fig.add_hline(y=1.0, line_dash="dot", line_color="gray", annotation_text="Kaiser (1.0)")
     
     fig.update_layout(
-        title="Scree Plot (Eigenvalues)",
+        title="Scree Plot & Parallel Analysis",
         xaxis_title="Factor Number",
         yaxis_title="Eigenvalue",
-        template="plotly_white"
+        template="plotly_white",
+        legend=dict(x=0.7, y=0.9)
     )
     return fig
 
@@ -390,15 +402,12 @@ def calculate_corr_with_pvalues(df):
                 corr_mat.loc[r, c] = 1.0
                 p_mat.loc[r, c] = 0.0
             else:
-                # Spearman is standard for Likert
                 corr, p = spearmanr(df[r], df[c])
                 corr_mat.loc[r, c] = corr
                 p_mat.loc[r, c] = p
     
-    # Fill NaN just in case
     corr_mat = corr_mat.fillna(0.0)
-    p_mat = p_mat.fillna(1.0) # Conservative: if calc failed, assume not significant
-                
+    p_mat = p_mat.fillna(1.0)
     return corr_mat, p_mat
 
 # ==========================================
@@ -468,14 +477,19 @@ if uploaded_file:
         # Factor Optimization Section
         col_opt1, col_opt2 = st.columns([2, 1])
         with col_opt1:
-            st.subheader("Optimal Factors (Scree Plot & Kaiser)")
-            st.plotly_chart(plot_scree(engine.eigenvalues[:10]), use_container_width=True)
+            st.subheader("Optimal Factors (Scree & Parallel Analysis)")
+            # Use top 10 eigenvalues for display
+            n_disp = min(10, len(engine.eigenvalues))
+            st.plotly_chart(plot_scree_parallel(engine.eigenvalues[:n_disp], engine.simulated_eigenvalues[:n_disp]), use_container_width=True)
         
         with col_opt2:
             st.markdown("<br><br>", unsafe_allow_html=True) # Spacer
             kaiser_k = sum(engine.eigenvalues > 1.0)
+            parallel_k = sum(engine.eigenvalues > engine.simulated_eigenvalues)
+            
             st.metric("Kaiser Criterion (k)", f"{kaiser_k} Factors", "Eigenvalue > 1.0")
-            st.info(f"데이터 통계상 {kaiser_k}개 요인이 권장됩니다. (그래프의 꺾임새를 확인하세요)")
+            st.metric("Parallel Analysis (k)", f"{parallel_k} Factors", "Observed > Simulated")
+            st.info(f"**Parallel Analysis**는 무작위 데이터보다 설명력이 높은 요인만 추천합니다. (Kaiser 룰보다 더 엄격하고 정확함)")
 
         st.divider()
 
@@ -537,7 +551,7 @@ if uploaded_file:
     # --- Tab 3: TPPP Network & Loops (NEW) ---
     with tab3:
         st.header("TPPP Network Analysis & Feedback Loops")
-        st.markdown("4개 차원 간의 상호작용(Correlation)과 순환 고리(Feedback Loop)를 탐색합니다.")
+        st.markdown("4개 차원 간의 **상호작용(Correlation)**과 **순환 고리(Feedback Loop)**를 탐색합니다.")
         
         c1, c2 = st.columns([1, 2])
         with c1:
