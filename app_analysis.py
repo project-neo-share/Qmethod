@@ -551,7 +551,7 @@ if uploaded_file:
     # --- Tab 3: TPPP Network & Loops (NEW) ---
     with tab3:
         st.header("TPPP Network Analysis & Feedback Loops")
-        st.markdown("4개 차원 간의 **상호작용(Correlation)**과 **순환 고리(Feedback Loop)**를 탐색합니다.")
+        st.markdown("4개 차원 간의 상호작용(Correlation)과 순환 고리(Feedback Loop)를 탐색합니다.")
         
         c1, c2 = st.columns([1, 2])
         with c1:
