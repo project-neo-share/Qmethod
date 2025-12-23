@@ -66,10 +66,10 @@ Q_MAP = {f"Q{i+1:02d}": txt for i, txt in enumerate(STATEMENTS)}
 
 # TPPP Mapping (Based on content)
 TPPP_CATEGORIES = {
-    "Technology": ["Q01", "Q02", "Q03", "Q04", "Q05", "Q06", "Q24"],
-    "People (Trust)": ["Q08", "Q09", "Q10", "Q11", "Q12", "Q22", "Q23"],
-    "Place (Location)": ["Q13", "Q14", "Q15", "Q16", "Q17", "Q18"],
-    "Process (Governance)": ["Q07", "Q19", "Q20", "Q21"]
+    "Technology": ["Q01", "Q02", "Q03", "Q04", "Q05", "Q06"], # Pure Tech features & perception
+    "People (Trust)": ["Q08", "Q09", "Q10", "Q12", "Q22", "Q23"], # Trust, actors, emotion
+    "Place (Location)": ["Q13", "Q14", "Q15", "Q16", "Q17", "Q18"], # Siting, local benefits
+    "Process (Governance)": ["Q07", "Q11", "Q19", "Q20", "Q21", "Q24"] # Participation, mediation, transparency, monitoring
 }
 
 # Reverse mapping for easy lookup
@@ -475,7 +475,7 @@ if uploaded_file:
             st.markdown("<br><br>", unsafe_allow_html=True) # Spacer
             kaiser_k = sum(engine.eigenvalues > 1.0)
             st.metric("Kaiser Criterion (k)", f"{kaiser_k} Factors", "Eigenvalue > 1.0")
-            st.info(f"데이터 통계상 **{kaiser_k}개 요인**이 권장됩니다. (그래프의 꺾임새를 확인하세요)")
+            st.info(f"데이터 통계상 {kaiser_k}개 요인이 권장됩니다. (그래프의 꺾임새를 확인하세요)")
 
         st.divider()
 
@@ -537,7 +537,7 @@ if uploaded_file:
     # --- Tab 3: TPPP Network & Loops (NEW) ---
     with tab3:
         st.header("TPPP Network Analysis & Feedback Loops")
-        st.markdown("4개 차원 간의 **상호작용(Correlation)**과 **순환 고리(Feedback Loop)**를 탐색합니다.")
+        st.markdown("4개 차원 간의 상호작용(Correlation)과 순환 고리(Feedback Loop)를 탐색합니다.")
         
         c1, c2 = st.columns([1, 2])
         with c1:
