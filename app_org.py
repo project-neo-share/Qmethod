@@ -346,7 +346,7 @@ with st.sidebar:
                 df_download = pd.read_csv(DATA_PATH)
                 st.download_button(
                     label="📥 응답 데이터 다운로드",
-                    data=df_download.to_csv(index=False).encode("utf-8-sig"),
+                    data=df_download.astype(str).to_csv(index=False).encode("utf-8-sig"),
                     file_name="responses.csv",
                     mime="text/csv"
                 )
