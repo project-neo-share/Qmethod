@@ -7,7 +7,7 @@ Real-Data Driven SITE Protocol Simulation
   2. Calculate TPPP Sensitivities for each Factor (F1-F4).
   3. Simulate Agent interactions under BAU vs. SITE scenarios.
   4. Calculate Total Acceptance Index using Population Weights.
-- Update (Fix): Ensured all TPPP dimensions (Tech, People, Place, Process) are integrated into the acceptance calculation.
+- Update (Justification): Clarified 'Conflict Threshold = 0' and scaling logic based on Net Acceptance theory.
 """
 
 import streamlit as st
@@ -144,7 +144,10 @@ def run_simulation(profiles, steps=24, scenario="BAU"):
             raw_score = tech_eff + place_eff + process_eff + people_eff
             
             # Normalize (-100 to 100 scale) using tanh for saturation
-            acceptance = np.tanh(raw_score) * 100
+            # Theoretical Basis: Tanh models socio-psychological saturation (S-curve).
+            # Factor 0.25: Calibrates the curve so that max SITE input yields ~40-50 score (Realistic consensus),
+            # instead of theoretical max 100.
+            acceptance = np.tanh(raw_score * 0.25) * 100
             
             row[agent] = acceptance
             total_acc += acceptance * POPULATION_WEIGHTS.get(agent, 0.25)
@@ -192,6 +195,13 @@ with c1:
     st.markdown("---")
     st.markdown("**Weights Used:**")
     st.json(POPULATION_WEIGHTS)
+    
+    st.info("""
+    **Index Definition:**
+    * **> 0 (Positive):** Net Acceptance (Agreement > Opposition)
+    * **< 0 (Negative):** Net Conflict (Opposition > Agreement)
+    * **0 (Threshold):** Deadlock / Neutrality
+    """)
 
 with c2:
     st.subheader("Simulation Results")
@@ -204,8 +214,16 @@ with c2:
     fig = go.Figure()
     fig.add_trace(go.Scatter(x=df_bau["Step"], y=df_bau["Total Index"], name="BAU (Dublin Path)", line=dict(color='red', width=4)))
     fig.add_trace(go.Scatter(x=df_site["Step"], y=df_site["Total Index"], name="SITE (Google Path)", line=dict(color='blue', width=4)))
-    fig.add_hline(y=0, line_dash="dash", annotation_text="Conflict Threshold")
-    fig.update_layout(title="Social Acceptance Trajectory (Total Weighted)", yaxis_title="Acceptance Index (-100 to 100)")
+    
+    # Threshold Line with Annotation
+    fig.add_hline(y=0, line_dash="dash", line_color="black", annotation_text="Conflict Threshold (Net Zero)", annotation_position="bottom right")
+    
+    fig.update_layout(
+        title="Social Acceptance Trajectory (Total Weighted)", 
+        yaxis_title="Net Acceptance Index (-100 to +100)",
+        xaxis_title="Time Steps (Months)",
+        template="plotly_white"
+    )
     st.plotly_chart(fig, use_container_width=True)
     
     # Plot Detail (F4 Focus)
@@ -213,6 +231,7 @@ with c2:
     fig2 = go.Figure()
     fig2.add_trace(go.Scatter(x=df_bau["Step"], y=df_bau["F4"], name="F4 under BAU", line=dict(color='red', dash='dot')))
     fig2.add_trace(go.Scatter(x=df_site["Step"], y=df_site["F4"], name="F4 under SITE", line=dict(color='blue', dash='dot')))
+    fig2.add_hline(y=0, line_dash="dash", line_color="gray")
     fig2.update_layout(title="Behavioral Change of F4 (Tech-Skeptic Localists)")
     st.plotly_chart(fig2, use_container_width=True)
     
@@ -220,4 +239,5 @@ with c2:
     **Interpretation for Manuscript:**
     * **BAU:** F4's resistance intensifies over time (Red dotted line drops), dragging the total index down.
     * **SITE:** By increasing 'Process' and 'Place' inputs, the SITE protocol neutralizes F4's negative Tech sensitivity, converting them from blockers to passive supporters.
+    * **Threshold (0):** Represents the tipping point where social consensus shifts from 'Conflict' to 'Conditional Acceptance'.
     """)
