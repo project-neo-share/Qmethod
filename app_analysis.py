@@ -6,6 +6,8 @@ Real-Data Driven SITE Protocol Simulation
   1. Load Factor Arrays (Z-scores) from CSV.
   2. Calculate TPPP Sensitivities for each Factor (F1-F4).
   3. Simulate Agent interactions under BAU vs. SITE scenarios.
+  4. Calculate Total Acceptance Index using Population Weights.
+- Update (Fix): Ensured all TPPP dimensions (Tech, People, Place, Process) are integrated into the acceptance calculation.
 """
 
 import streamlit as st
@@ -20,6 +22,7 @@ import plotly.express as px
 st.set_page_config(page_title="Real-Data SITE Simulation", layout="wide")
 
 # TPPP Mapping (Balanced)
+# Keys must match exactly with what is used in calculation
 TPPP_CATEGORIES = {
     "Technology": ["Q01", "Q02", "Q03", "Q04", "Q05", "Q06"],
     "People": ["Q08", "Q09", "Q10", "Q12", "Q22", "Q23"],
@@ -28,7 +31,6 @@ TPPP_CATEGORIES = {
 }
 
 # Default Population Weights (based on your analysis ~44 people)
-# Adjust these if the exact count changes
 POPULATION_WEIGHTS = {
     "F1": 0.45,  # Techno-Realists (Majority)
     "F2": 0.10,  # Eco-Equity Guardians
@@ -52,24 +54,34 @@ def calculate_agent_profiles(df):
             q_to_cat[item] = cat
             
     # 2. Calculate Mean Z-scores per Category for each Factor
-    # This becomes the "Sensitivity" of that agent to that dimension
     profiles = {}
-    factors = [c for c in df.columns if c.startswith('F')]
     
-    # Ensure Statement ID is the index or accessible
-    if 'Statement_ID' not in df.columns:
-        # Assuming index or Q01 is in a column. Let's try to extract Qxx
-        # The uploaded file has 'Statement' text, we need to map back to Q01..Q24 or use row order
-        # For robustness, let's assume the rows are Q01 to Q24 in order if not labeled
-        df['Q_ID'] = [f"Q{i+1:02d}" for i in range(len(df))]
+    # Identify Factor columns (F1, F2...)
+    factors = [c for c in df.columns if c.startswith('F') and c[1:].isdigit()]
+    
+    # Ensure Statement ID is accessible. 
+    # If the file has 'Statement' text but not QID, we assume row order Q01..Q24
+    if 'Q_ID' not in df.columns:
+        # Check if 'Category' column exists (from previous export), if not create Q_ID
+        # Safe assumption for 24 items in order
+        if len(df) == 24:
+            df['Q_ID'] = [f"Q{i+1:02d}" for i in range(24)]
+        else:
+            # Try to map by matching statement text? (Too risky). 
+            # Better to assume standard format or ask user.
+            # For now, create Q_ID sequence
+            df['Q_ID'] = [f"Q{i+1:02d}" for i in range(len(df))]
     
     for f in factors:
         agent_props = {}
         for cat, q_ids in TPPP_CATEGORIES.items():
             # Filter rows for this category
             mask = df['Q_ID'].isin(q_ids)
-            mean_z = df.loc[mask, f].mean()
-            agent_props[cat] = mean_z
+            if mask.sum() > 0:
+                mean_z = df.loc[mask, f].mean()
+                agent_props[cat] = mean_z
+            else:
+                agent_props[cat] = 0.0 # Default if no match
         
         profiles[f] = agent_props
         
@@ -86,17 +98,21 @@ def run_simulation(profiles, steps=24, scenario="BAU"):
         # Tech: Increases aggressively (Pushing specs)
         # Place: Low consideration (Ignoring context)
         # Process: Low transparency
+        # People: Trust building effort is minimal
         tech_in = np.linspace(0.5, 1.2, steps)
         place_in = np.full(steps, 0.2)
         process_in = np.full(steps, 0.3)
+        people_in = np.full(steps, 0.2) # Minimal trust building efforts
         
     elif scenario == "SITE Protocol (Socio-Technical)":
         # Tech: Moderate, validated by Process
         # Place: High (Incentives, Equity)
         # Process: High (Transparency, Participation)
+        # People: Active trust building
         tech_in = np.linspace(0.4, 0.8, steps)
         place_in = np.linspace(0.5, 1.0, steps) # Increasing incentives
-        process_in = np.linspace(0.5, 1.2, steps) # Increasing trust building
+        process_in = np.linspace(0.5, 1.2, steps) # Increasing transparency
+        people_in = np.linspace(0.4, 1.0, steps) # Increasing engagement
 
     for t in range(steps):
         row = {"Step": t}
@@ -104,28 +120,30 @@ def run_simulation(profiles, steps=24, scenario="BAU"):
         
         for agent, sens in profiles.items():
             # Core Equation: Acceptance = Sum(Input * Sensitivity)
-            # Sensitivity comes from Q-data (Z-score)
             
             # 1. Tech Effect
-            # If F4 has neg Tech sensitivity (-0.8), High Tech Input reduces acceptance.
-            tech_eff = tech_in[t] * sens["Technology"]
+            tech_eff = tech_in[t] * sens.get("Technology", 0)
             
             # 2. Place Effect
-            place_eff = place_in[t] * sens["Place"]
+            place_eff = place_in[t] * sens.get("Place", 0)
             
-            # 3. Process/People Effect (The Mediator)
-            # Process input activates the People (Trust) sensitivity
-            process_eff = process_in[t] * (sens["Process"] + sens["People"]) / 2
+            # 3. Process Effect
+            process_eff = process_in[t] * sens.get("Process", 0)
+
+            # 4. People (Trust) Effect
+            people_eff = people_in[t] * sens.get("People", 0)
             
-            # 4. Interaction (The Vicious Cycle logic)
-            # If Scenario is BAU and Agent is Skeptic (F4), Tech push BACKFIRES
-            if scenario == "BAU (Technocratic Push)" and sens["Technology"] < -0.5:
+            # 5. Interaction (The Vicious Cycle logic)
+            # If Process is low, High Tech reduces Trust for Skeptics (F4)
+            # This is where we model the feedback loop
+            if scenario == "BAU (Technocratic Push)" and sens.get("Technology", 0) < -0.5:
+                # High tech push backfires if trust sensitivity is high (or tech sensitivity is very negative)
                 tech_eff *= 1.5 # Amplified resistance due to distrust
             
-            # Sum components
-            raw_score = tech_eff + place_eff + process_eff
+            # Sum components (All 4 Dimensions)
+            raw_score = tech_eff + place_eff + process_eff + people_eff
             
-            # Normalize (-100 to 100 scale for intuitive reading)
+            # Normalize (-100 to 100 scale) using tanh for saturation
             acceptance = np.tanh(raw_score) * 100
             
             row[agent] = acceptance
@@ -153,7 +171,6 @@ if uploaded_file is not None:
     df_loadings = pd.read_csv(uploaded_file)
     st.sidebar.success("Custom Data Loaded!")
 else:
-    # Fallback to dummy structure if no file (for demo) - User should upload the file
     st.info("👋 Please upload the `type-specific-factor-loading.csv` file to start.")
     st.stop()
 
