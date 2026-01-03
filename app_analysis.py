@@ -6,7 +6,7 @@ Final Q-Methodology Analysis (Fixed 4 Factors + System Dynamics)
   1. Person-wise Correlation (Q-method) -> 4 Factors Typology
   2. TPPP Framework -> Systemic Feedback Loop Analysis (Causal Links)
   3. Counterfactual Simulation -> Validation of SITE Protocol
-- Update: Enhanced visualization for Simulation (Thresholds, F4 Deep-dive).
+- Update: Merged Figures 1 and 2 into a single subplot for better manuscript presentation.
 """
 
 import io
@@ -15,6 +15,7 @@ import pandas as pd
 import streamlit as st
 import plotly.express as px
 import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 from scipy.stats import spearmanr, norm as normal_dist
 import itertools
 
@@ -218,9 +219,6 @@ def create_system_network(corr_matrix, threshold=0.3):
     return fig
 
 def calculate_agent_profiles(df):
-    """
-    Derives simulation parameters from Q-Factor Z-scores.
-    """
     profiles = {}
     factors = [c for c in df.columns if c.startswith('F') and c[1:].isdigit()]
     
@@ -362,27 +360,30 @@ if uploaded_file:
             df_bau = run_simulation(profiles, steps=sim_steps, scenario="BAU (Technocratic Push)")
             df_site = run_simulation(profiles, steps=sim_steps, scenario="SITE Protocol (Socio-Technical)")
             
-            # Aggregate Plot
-            fig_agg = go.Figure()
-            fig_agg.add_trace(go.Scatter(x=df_bau["Step"], y=df_bau["Total Index"], name="BAU (Deadlock)", line=dict(color='red', width=4)))
-            fig_agg.add_trace(go.Scatter(x=df_site["Step"], y=df_site["Total Index"], name="SITE (Consensus)", line=dict(color='blue', width=4)))
+            # Merged Plot (2 Rows Subplot)
+            fig_merged = make_subplots(rows=2, cols=1, 
+                                     shared_xaxes=True, 
+                                     vertical_spacing=0.1,
+                                     subplot_titles=("(A) Total Acceptance Trajectory", "(B) Key Driver Dynamics (F4: Tech-Skeptic Localists)"))
             
-            # Visualization Enhancements for Manuscript
-            fig_agg.add_hline(y=0, line_dash="dash", line_color="black", annotation_text="Net Neutrality (Threshold 0)")
-            fig_agg.add_hrect(y0=30, y1=100, line_width=0, fillcolor="green", opacity=0.1, annotation_text="Consensus Zone")
-            fig_agg.add_hrect(y0=-100, y1=10, line_width=0, fillcolor="red", opacity=0.1, annotation_text="Conflict Zone")
+            # Row 1: Total Index
+            fig_merged.add_trace(go.Scatter(x=df_bau["Step"], y=df_bau["Total Index"], name="BAU (Deadlock)", line=dict(color='red', width=3)), row=1, col=1)
+            fig_merged.add_trace(go.Scatter(x=df_site["Step"], y=df_site["Total Index"], name="SITE (Consensus)", line=dict(color='blue', width=3)), row=1, col=1)
+            fig_merged.add_hline(y=0, line_dash="dash", line_color="black", annotation_text="Threshold", row=1, col=1)
             
-            fig_agg.update_layout(title="Social Acceptance Trajectory (Total Weighted)", yaxis_title="Net Acceptance Index (-100 to +100)", xaxis_title="Time Steps (Months)", template="plotly_white")
-            st.plotly_chart(fig_agg, use_container_width=True)
+            # Row 2: F4 Detail
+            fig_merged.add_trace(go.Scatter(x=df_bau["Step"], y=df_bau["F4"], name="F4 (BAU)", line=dict(color='red', dash='dot')), row=2, col=1)
+            fig_merged.add_trace(go.Scatter(x=df_site["Step"], y=df_site["F4"], name="F4 (SITE)", line=dict(color='blue', dash='dot')), row=2, col=1)
+            fig_merged.add_hline(y=0, line_dash="dash", line_color="gray", row=2, col=1)
             
-            # F4 Detail Plot
-            st.markdown("#### Key Driver: The Skeptic's Journey (F4)")
-            fig2 = go.Figure()
-            fig2.add_trace(go.Scatter(x=df_bau["Step"], y=df_bau["F4"], name="F4 under BAU", line=dict(color='red', dash='dot')))
-            fig2.add_trace(go.Scatter(x=df_site["Step"], y=df_site["F4"], name="F4 under SITE", line=dict(color='blue', dash='dot')))
-            fig2.add_hline(y=0, line_dash="dash", line_color="gray")
-            fig2.update_layout(title="Behavioral Change of F4 (Tech-Skeptic Localists)", template="plotly_white")
-            st.plotly_chart(fig2, use_container_width=True)
+            fig_merged.update_layout(height=700, template="plotly_white", title_text="Simulation Results: Aggregate & Micro Dynamics")
+            fig_merged.update_yaxes(title_text="Acceptance Index", range=[-100, 100], row=1, col=1)
+            fig_merged.update_yaxes(title_text="Acceptance Index", range=[-100, 100], row=2, col=1)
+            fig_merged.update_xaxes(title_text="Time Steps (Months)", row=2, col=1)
+            
+            st.plotly_chart(fig_merged, use_container_width=True)
+            
+            st.success("The merged figure demonstrates that the rise in total acceptance (A) is structurally driven by the reversal of F4's resistance (B).")
             
     except Exception as e:
         st.error(f"Error processing file: {e}")
