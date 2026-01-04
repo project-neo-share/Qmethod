@@ -6,7 +6,7 @@ Final Q-Methodology Analysis (Fixed 4 Factors + System Dynamics)
   1. Person-wise Correlation (Q-method) -> 4 Factors Typology
   2. TPPP Framework -> Systemic Feedback Loop Analysis (Causal Links)
   3. Counterfactual Simulation -> Validation of SITE Protocol
-- Update: Merged Figures 1 and 2 into a single subplot for better manuscript presentation.
+- Update: Adjusted Y-axis scale in SITE simulation tab for better visibility of 10-50 range.
 """
 
 import io
@@ -376,9 +376,14 @@ if uploaded_file:
             fig_merged.add_trace(go.Scatter(x=df_site["Step"], y=df_site["F4"], name="F4 (SITE)", line=dict(color='blue', dash='dot')), row=2, col=1)
             fig_merged.add_hline(y=0, line_dash="dash", line_color="gray", row=2, col=1)
             
+            # [Update] Set Y-Axis Range to visualize data better (focus on populated range)
+            # Find min/max to set range dynamically or set a fixed reasonable range like -30 to 60
+            y_min = min(df_bau["Total Index"].min(), df_site["Total Index"].min(), df_bau["F4"].min(), df_site["F4"].min()) - 10
+            y_max = max(df_bau["Total Index"].max(), df_site["Total Index"].max(), df_bau["F4"].max(), df_site["F4"].max()) + 10
+            
             fig_merged.update_layout(height=700, template="plotly_white", title_text="Simulation Results: Aggregate & Micro Dynamics")
-            fig_merged.update_yaxes(title_text="Acceptance Index", range=[-100, 100], row=1, col=1)
-            fig_merged.update_yaxes(title_text="Acceptance Index", range=[-100, 100], row=2, col=1)
+            fig_merged.update_yaxes(title_text="Acceptance Index", range=[y_min, y_max], row=1, col=1)
+            fig_merged.update_yaxes(title_text="Acceptance Index", range=[y_min, y_max], row=2, col=1)
             fig_merged.update_xaxes(title_text="Time Steps (Months)", row=2, col=1)
             
             st.plotly_chart(fig_merged, use_container_width=True)
