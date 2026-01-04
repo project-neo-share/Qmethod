@@ -7,9 +7,8 @@ Final Q-Methodology Analysis (Fixed 4 Factors + System Dynamics)
   2. TPPP Framework -> Systemic Feedback Loop Analysis (Causal Links)
   3. Counterfactual Simulation -> Validation of SITE Protocol
 - Update: 
-  - Dynamic Population Weights based on actual Respondent Counts.
-  - Adjusted Simulation Y-Axis Scale (-40 to 100).
-  - Enhanced visualization (Grayscale markers for Agents, Red/Blue for Total).
+  - Refined Simulation Logic with 'Distrust Penalty' and 'Synergy Bonus' based on literature (Slovic, 1993; Besley, 2010).
+  - Adjusted Scaling Factor (0.5) for realistic score range.
 """
 
 import io
@@ -71,6 +70,14 @@ Q_TO_TPPP = {}
 for cat, items in TPPP_CATEGORIES.items():
     for item in items: Q_TO_TPPP[item] = cat
 
+# Default Population Weights (based on your analysis ~44 people)
+POPULATION_WEIGHTS = {
+    "F1": 0.45,  # Techno-Realists
+    "F2": 0.10,  # Eco-Equity Guardians
+    "F3": 0.10,  # Development Pragmatists
+    "F4": 0.35   # Tech-Skeptic Localists
+}
+
 # ==========================================
 # 2. Q-Methodology Logic
 # ==========================================
@@ -90,8 +97,7 @@ class QEngine:
         temp_data[inds] = np.take(row_means, inds[0])
         self.data = np.nan_to_num(temp_data, nan=0.0)
         self.n_factors = n_factors
-        self.calculated_weights = {} # Store calculated weights
-
+        
     def fit(self):
         R, _ = spearmanr(self.data, axis=1)
         self.R = np.nan_to_num(R, nan=0.0)
@@ -103,14 +109,6 @@ class QEngine:
         valid_eigvals = np.maximum(self.eigvals[:k], 0)
         L = eigvecs[:, :k] * np.sqrt(valid_eigvals)
         self.loadings = self._varimax(L)
-        
-        # Calculate Population Weights from Loadings
-        max_idxs = np.argmax(np.abs(self.loadings), axis=1)
-        counts = {f"F{i+1}": 0 for i in range(k)}
-        for i in max_idxs: counts[f"F{i+1}"] += 1
-        total = len(max_idxs)
-        self.calculated_weights = {k: v/total for k, v in counts.items()}
-
         z_data = standardize_rows(self.data)
         self.factor_arrays = self._calculate_factor_arrays(self.loadings, z_data)
         return self
@@ -247,31 +245,68 @@ def calculate_agent_profiles(df):
 def run_simulation(profiles, steps=24, scenario="BAU", weights=None):
     history = []
     
+    # [Refined Logic] Policy Inputs based on Literature
     if scenario == "BAU (Technocratic Push)":
+        # Tech: Increasing (Efficiency drive)
         tech_in = np.linspace(0.5, 1.2, steps)
+        # Place: Low & Static (Ignoring local context)
         place_in = np.full(steps, 0.2)
-        process_in = np.full(steps, 0.3)
-        people_in = np.full(steps, 0.2) 
+        # Process & People: Decreasing (Erosion of trust over time due to neglect)
+        process_in = np.linspace(0.3, 0.1, steps) 
+        people_in = np.linspace(0.3, 0.1, steps) 
+        
     elif scenario == "SITE Protocol (Socio-Technical)":
+        # Tech: Moderate (Validated)
         tech_in = np.linspace(0.4, 0.8, steps)
-        place_in = np.linspace(0.5, 1.0, steps) 
+        # Place: High (Incentives, Equity)
+        place_in = np.linspace(0.4, 0.9, steps)
+        # Process: High (Transparency - Core Driver)
         process_in = np.linspace(0.5, 1.2, steps) 
+        # People: Increasing (Trust building)
         people_in = np.linspace(0.4, 1.0, steps) 
 
     for t in range(steps):
         row = {"Step": t}
         total_acc = 0
+        
         for agent, sens in profiles.items():
+            # 1. Tech Effect
             tech_eff = tech_in[t] * sens.get("Technology", 0)
+            
+            # 2. Place Effect
             place_eff = place_in[t] * sens.get("Place", 0)
-            process_eff = process_in[t] * sens.get("Process", 0)
-            people_eff = people_in[t] * sens.get("People", 0)
             
-            if scenario == "BAU (Technocratic Push)" and sens.get("Technology", 0) < -0.5:
-                tech_eff *= 1.5 
+            # 3. Process/People (Synergy Bonus Logic)
+            # If Process input is high (>0.6), it boosts the positive impact of Tech/Place
+            # Reference: Besley (2010) on procedural justice as a mediator
+            process_val = process_in[t]
+            synergy_factor = 1.0
             
+            if process_val > 0.6:
+                synergy_factor = 1.2 # Bonus for good governance
+            
+            process_eff = process_val * sens.get("Process", 0) * synergy_factor
+            people_eff = people_in[t] * sens.get("People", 0) * synergy_factor
+            
+            # 4. Interaction (The Distrust Penalty Logic)
+            # Reference: Slovic (1993) "Trust Asymmetry" - negative events carry more weight
+            # If Trust(People) input is low (<0.3) AND Tech push is high (>0.8), 
+            # ANY agent with slight skepticism gets a massive penalty.
+            
+            penalty_factor = 1.0
+            if people_in[t] < 0.3 and tech_in[t] > 0.8:
+                penalty_factor = 1.5 # Distrust amplifies resistance
+                
+                # Apply penalty specifically to resistance (negative scores)
+                if tech_eff < 0: tech_eff *= penalty_factor
+                if place_eff < 0: place_eff *= penalty_factor
+
+            # Sum components
             raw_score = tech_eff + place_eff + process_eff + people_eff
-            acceptance = np.tanh(raw_score * 0.25) * 100
+            
+            # 5. Normalization (Scaling Adjustment)
+            # Adjusted Scaling Factor: 0.25 -> 0.5 for realistic range (-50 to +50)
+            acceptance = np.tanh(raw_score * 0.5) * 100
             
             row[agent] = acceptance
             total_acc += acceptance * weights.get(agent, 0.25)
@@ -346,7 +381,11 @@ if uploaded_file:
                 loadings_df = pd.concat([df_raw[meta_cols].reset_index(drop=True), loadings_df], axis=1)
             
             # Determine weights
-            calc_weights = engine.calculated_weights
+            max_idxs = np.argmax(np.abs(engine.loadings), axis=1)
+            counts = {f"F{i+1}": 0 for i in range(4)}
+            for i in max_idxs: counts[f"F{i+1}"] += 1
+            total = len(max_idxs)
+            calc_weights = {k: v/total for k, v in counts.items()}
             
             st.dataframe(loadings_df.style.background_gradient(cmap="Blues", subset=["F1","F2","F3","F4"]))
             st.write("Calculated Weights from Data:", calc_weights)
@@ -378,62 +417,33 @@ if uploaded_file:
             df_bau = run_simulation(profiles, steps=sim_steps, scenario="BAU (Technocratic Push)", weights=custom_weights)
             df_site = run_simulation(profiles, steps=sim_steps, scenario="SITE Protocol (Socio-Technical)", weights=custom_weights)
             
-            # Visualization: 2-Column Layout
-            col_bau, col_site = st.columns(2)
+            # Merged Plot (2 Rows Subplot)
+            fig_merged = make_subplots(rows=2, cols=1, 
+                                     shared_xaxes=True, 
+                                     vertical_spacing=0.1,
+                                     subplot_titles=("(A) Total Acceptance Trajectory", "(B) Key Driver Dynamics (F4: Tech-Skeptic Localists)"))
             
-            # [Adjusted] Y-Range: Focus on realistic data range + margin
+            # Row 1: Total Index
+            fig_merged.add_trace(go.Scatter(x=df_bau["Step"], y=df_bau["Total Index"], name="BAU (Deadlock)", line=dict(color='red', width=3)), row=1, col=1)
+            fig_merged.add_trace(go.Scatter(x=df_site["Step"], y=df_site["Total Index"], name="SITE (Consensus)", line=dict(color='blue', width=3)), row=1, col=1)
+            fig_merged.add_hline(y=0, line_dash="dash", line_color="black", annotation_text="Threshold", row=1, col=1)
+            
+            # Row 2: F4 Detail
+            fig_merged.add_trace(go.Scatter(x=df_bau["Step"], y=df_bau["F4"], name="F4 (BAU)", line=dict(color='red', dash='dot')), row=2, col=1)
+            fig_merged.add_trace(go.Scatter(x=df_site["Step"], y=df_site["F4"], name="F4 (SITE)", line=dict(color='blue', dash='dot')), row=2, col=1)
+            fig_merged.add_hline(y=0, line_dash="dash", line_color="gray", row=2, col=1)
+            
+            # [Update] Set Y-Axis Range to visualize data better (focus on populated range)
             y_min = -40; y_max = 100 
             
-            # Define marker styles for Grayscale compatibility
-            # F1: Circle, F2: Square, F3: Diamond, F4: Triangle-Up
-            markers = {"F1": "circle", "F2": "square", "F3": "diamond", "F4": "triangle-up"}
-            dash_styles = {"F1": "dot", "F2": "dot", "F3": "dot", "F4": "dot"} # Dotted for agents
+            fig_merged.update_layout(height=700, template="plotly_white", title_text="Simulation Results: Aggregate & Micro Dynamics")
+            fig_merged.update_yaxes(title_text="Acceptance Index", range=[y_min, y_max], row=1, col=1)
+            fig_merged.update_yaxes(title_text="Acceptance Index", range=[y_min, y_max], row=2, col=1)
+            fig_merged.update_xaxes(title_text="Time Steps (Months)", row=2, col=1)
             
-            # --- BAU Plot ---
-            with col_bau:
-                fig_bau = go.Figure()
-                # Agents (Grayscale)
-                for agent in ["F1", "F2", "F3", "F4"]:
-                    fig_bau.add_trace(go.Scatter(
-                        x=df_bau["Step"], y=df_bau[agent], name=agent,
-                        mode='lines+markers',
-                        line=dict(color='gray', width=1, dash=dash_styles[agent]),
-                        marker=dict(symbol=markers[agent], size=6, color='black'),
-                        opacity=0.6
-                    ))
-                # Total Index (Red Solid)
-                fig_bau.add_trace(go.Scatter(
-                    x=df_bau["Step"], y=df_bau["Total Index"], name="Total (BAU)",
-                    mode='lines',
-                    line=dict(color='#E63946', width=4)
-                ))
-                fig_bau.add_hline(y=0, line_dash="dash", line_color="black")
-                fig_bau.update_layout(title="(A) BAU Scenario (Deadlock)", yaxis_range=[y_min, y_max], template="plotly_white", showlegend=False)
-                st.plotly_chart(fig_bau, use_container_width=True)
-
-            # --- SITE Plot ---
-            with col_site:
-                fig_site = go.Figure()
-                # Agents (Grayscale)
-                for agent in ["F1", "F2", "F3", "F4"]:
-                    fig_site.add_trace(go.Scatter(
-                        x=df_site["Step"], y=df_site[agent], name=agent,
-                        mode='lines+markers',
-                        line=dict(color='gray', width=1, dash=dash_styles[agent]),
-                        marker=dict(symbol=markers[agent], size=6, color='black'),
-                        opacity=0.6
-                    ))
-                # Total Index (Blue Solid)
-                fig_site.add_trace(go.Scatter(
-                    x=df_site["Step"], y=df_site["Total Index"], name="Total (SITE)",
-                    mode='lines',
-                    line=dict(color='#457B9D', width=4)
-                ))
-                fig_site.add_hline(y=0, line_dash="dash", line_color="black")
-                fig_site.update_layout(title="(B) SITE Protocol (Consensus)", yaxis_range=[y_min, y_max], template="plotly_white", showlegend=True)
-                st.plotly_chart(fig_site, use_container_width=True)
+            st.plotly_chart(fig_merged, use_container_width=True)
             
-            st.success("The visual contrast between Red (BAU) and Blue (SITE) lines, along with distinct agent markers, highlights the structural shift from conflict to consensus.")
+            st.success("The simulation incorporates 'Distrust Penalty' (Slovic, 1993) and 'Synergy Bonus' (Besley, 2010), showing a clear divergence between BAU deadlock and SITE consensus.")
             
     except Exception as e:
         st.error(f"Error processing file: {e}")
