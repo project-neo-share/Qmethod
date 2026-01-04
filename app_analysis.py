@@ -9,7 +9,7 @@ Final Q-Methodology Analysis (Fixed 4 Factors + System Dynamics)
 - Update: 
   - Refined Simulation Logic with 'Distrust Penalty' and 'Synergy Bonus' based on literature.
   - Adjusted Scaling Factor (0.5) for realistic score range.
-  - Dynamic Inputs for BAU (Decreasing Trust) & SITE (Synergy Threshold).
+  - Added Sensitivity Analysis Function.
 """
 
 import io
@@ -243,9 +243,17 @@ def calculate_agent_profiles(df):
         profiles[f] = agent_props
     return profiles
 
-def run_simulation(profiles, steps=24, scenario="BAU", weights=None):
+def run_simulation(profiles, steps=24, scenario="BAU", weights=None, sensitivity_params=None):
     history = []
     
+    # Default parameters for sensitivity analysis
+    if sensitivity_params is None:
+        sensitivity_params = {
+            "tech_max": 0.8,
+            "place_max": 0.9,
+            "process_max": 1.2
+        }
+
     # [Refined Logic] Policy Inputs based on Literature
     if scenario == "BAU (Technocratic Push)":
         # Tech: Increasing aggressively (Efficiency drive)
@@ -266,7 +274,14 @@ def run_simulation(profiles, steps=24, scenario="BAU", weights=None):
         # Justification: Procedural justice acts as a mediator for acceptance (Besley, 2010).
         process_in = np.linspace(0.5, 1.2, steps) 
         # People: Increasing (Trust building)
-        people_in = np.linspace(0.4, 1.0, steps) 
+        people_in = np.linspace(0.4, 1.0, steps)
+        
+    elif scenario == "Sensitivity Test (Custom)":
+        # Dynamic inputs based on sliders
+        tech_in = np.linspace(0.4, sensitivity_params["tech_max"], steps)
+        place_in = np.linspace(0.4, sensitivity_params["place_max"], steps)
+        process_in = np.linspace(0.5, sensitivity_params["process_max"], steps)
+        people_in = np.linspace(0.4, 1.0, steps)
 
     for t in range(steps):
         row = {"Step": t}
@@ -418,10 +433,36 @@ if uploaded_file:
                 st.dataframe(sens_df.style.background_gradient(cmap="RdBu", vmin=-1, vmax=1).format("{:.2f}"))
 
             sim_steps = st.slider("Simulation Duration (Months)", 12, 60, 24)
+            
+            # Run Scenarios
             df_bau = run_simulation(profiles, steps=sim_steps, scenario="BAU (Technocratic Push)", weights=custom_weights)
             df_site = run_simulation(profiles, steps=sim_steps, scenario="SITE Protocol (Socio-Technical)", weights=custom_weights)
             
-            # Visualization: 2-Column Layout
+            # [NEW] Sensitivity Analysis Panel
+            st.markdown("---")
+            st.subheader("🎛️ Sensitivity Analysis (Process & Place Impact)")
+            c_sens1, c_sens2 = st.columns([1, 2])
+            
+            with c_sens1:
+                sens_process = st.slider("Max Process Input", 0.5, 1.5, 1.2, 0.1, help="Transparency/Governance level")
+                sens_place = st.slider("Max Place Input", 0.5, 1.5, 0.9, 0.1, help="Incentives/Equity level")
+                sens_tech = st.slider("Max Tech Input", 0.5, 1.2, 0.8, 0.1, help="Technological push level")
+                
+                sens_params = {"tech_max": sens_tech, "place_max": sens_place, "process_max": sens_process}
+                df_custom = run_simulation(profiles, steps=sim_steps, scenario="Sensitivity Test (Custom)", weights=custom_weights, sensitivity_params=sens_params)
+
+            with c_sens2:
+                fig_sens = go.Figure()
+                fig_sens.add_trace(go.Scatter(x=df_bau["Step"], y=df_bau["Total Index"], name="BAU", line=dict(color='gray', dash='dot')))
+                fig_sens.add_trace(go.Scatter(x=df_site["Step"], y=df_site["Total Index"], name="SITE (Standard)", line=dict(color='blue', dash='dash')))
+                fig_sens.add_trace(go.Scatter(x=df_custom["Step"], y=df_custom["Total Index"], name="Adjusted Scenario", line=dict(color='green', width=3)))
+                
+                fig_sens.update_layout(title="Sensitivity Test: Impact of Policy Intensity", yaxis_title="Acceptance Index", template="plotly_white")
+                st.plotly_chart(fig_sens, use_container_width=True)
+
+            # Visualization: 2-Column Layout (Main Results)
+            st.markdown("---")
+            st.subheader("Main Simulation Results")
             col_bau, col_site = st.columns(2)
             
             # [Adjusted] Y-Range: Focus on realistic data range + margin
