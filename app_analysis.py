@@ -2,14 +2,14 @@
 """
 Final Q-Methodology Analysis (Fixed 4 Factors + System Dynamics)
 - Purpose: Generate final report data for Nature Energy submission.
-- Core Logic: 
+- Logic: 
   1. Person-wise Correlation (Q-method) -> 4 Factors Typology
   2. TPPP Framework -> Systemic Feedback Loop Analysis (Causal Links)
   3. Counterfactual Simulation -> Validation of SITE Protocol
 - Update: 
-  - Refined Simulation Logic with 'Distrust Penalty' and 'Synergy Bonus' based on literature.
-  - Adjusted Scaling Factor (0.5) for realistic score range.
-  - Added Sensitivity Analysis Function.
+  - Revised Scenario Logic: BAU (Expectation Crash) vs. SITE (Trust Build-up).
+  - Integrated Sensitivity Analysis into Simulation Function.
+  - Realistic Input Curves (Non-linear).
 """
 
 import io
@@ -73,10 +73,10 @@ for cat, items in TPPP_CATEGORIES.items():
 
 # Default Population Weights (based on your analysis ~44 people)
 POPULATION_WEIGHTS = {
-    "F1": 0.36,  # Techno-Realists
-    "F2": 0.20,  # Eco-Equity Guardians
-    "F3": 0.18,  # Development Pragmatists
-    "F4": 0.26   # Tech-Skeptic Localists
+    "F1": 0.45,  # Techno-Realists
+    "F2": 0.10,  # Eco-Equity Guardians
+    "F3": 0.10,  # Development Pragmatists
+    "F4": 0.35   # Tech-Skeptic Localists
 }
 
 # ==========================================
@@ -255,7 +255,7 @@ def calculate_agent_profiles(df):
 def run_simulation(profiles, steps=24, scenario="BAU", weights=None, sensitivity_params=None):
     history = []
     
-    # Default parameters for sensitivity analysis
+    # Default parameters if not provided
     if sensitivity_params is None:
         sensitivity_params = {
             "tech_max": 0.8,
@@ -266,35 +266,50 @@ def run_simulation(profiles, steps=24, scenario="BAU", weights=None, sensitivity
             "synergy": 1.2
         }
 
-    # [Refined Logic] Policy Inputs based on Literature
+    # --- Scenario Input Definition (Advanced Logic) ---
     if scenario == "BAU (Technocratic Push)":
         # Tech: Increasing aggressively (Efficiency drive)
-        tech_in = np.linspace(0.5, 1.2, steps)
-        # Place: Low & Static (Ignoring local context)
+        # Using sensitivity param to allow user override if they want to test extreme BAU
+        tech_max_bau = sensitivity_params.get("tech_max", 1.2) * 1.5 # BAU pushes tech harder by default
+        tech_in = np.linspace(0.5, tech_max_bau, steps)
+        
+        # Place: Low & Static
         place_in = np.full(steps, 0.2)
-        # Process & People: Decreasing (Erosion of trust over time due to neglect)
-        # Justification: "Trust Asymmetry Principle" - Negative events (neglect) impact trust more than positive ones (Slovic, 1993).
-        process_in = np.linspace(0.3, 0.0, steps) 
-        people_in = np.linspace(0.3, 0.0, steps) 
+        
+        # Process & People: Initial hope -> Disappointment (Crash)
+        # Justification: Initial PR creates hype (0.4), but lack of substance leads to erosion (0.1).
+        process_in = np.linspace(0.4, 0.1, steps)
+        people_in = np.linspace(0.4, 0.0, steps) 
         
     elif scenario == "SITE Protocol (Socio-Technical)":
-        # Tech: Moderate (Validated)
-        tech_in = np.linspace(0.4, 1.0, steps)
-        # Place: High (Incentives, Equity)
-        place_in = np.linspace(0.4, 0.5, steps)
-        # Process: High (Transparency - Core Driver)
-        # Justification: Procedural justice acts as a mediator for acceptance (Besley, 2010).
-        process_in = np.linspace(0.5, 1.5, steps) 
-        # People: Increasing (Trust building)
-        people_in = np.linspace(0.8, sensitivity_params["people_max"], steps)
+        # Tech: Moderate & Validated
+        tech_max_site = sensitivity_params.get("tech_max", 0.8)
+        tech_in = np.linspace(0.4, tech_max_site, steps)
+        
+        # Place: Increasing with Plateau (Incentive Negotiation -> Agreement)
+        place_max = sensitivity_params.get("place_max", 0.9)
+        plateau_start = int(steps * 0.7)
+        place_in = np.concatenate([
+            np.linspace(0.4, place_max, plateau_start),
+            np.full(steps - plateau_start, place_max)
+        ])
+        
+        # Process: High (Core driver)
+        process_max = sensitivity_params.get("process_max", 1.2)
+        process_in = np.linspace(0.5, process_max, steps) 
+        
+        # People: Trust builds up (Lagging indicator of Process)
+        people_max = sensitivity_params.get("people_max", 1.0)
+        people_in = np.linspace(0.4, people_max, steps)
         
     elif scenario == "Sensitivity Test (Custom)":
-        # Dynamic inputs based on sliders
+        # Fully custom inputs from sliders
         tech_in = np.linspace(0.4, sensitivity_params["tech_max"], steps)
         place_in = np.linspace(0.4, sensitivity_params["place_max"], steps)
         process_in = np.linspace(0.5, sensitivity_params["process_max"], steps)
         people_in = np.linspace(0.4, sensitivity_params["people_max"], steps)
 
+    # --- Simulation Loop ---
     for t in range(steps):
         row = {"Step": t}
         total_acc = 0
@@ -307,36 +322,26 @@ def run_simulation(profiles, steps=24, scenario="BAU", weights=None, sensitivity
             place_eff = place_in[t] * sens.get("Place", 0)
             
             # 3. Process/People (Synergy Bonus Logic)
-            # If Process input is high (>0.6), it boosts the positive impact of Tech/Place
-            # Theory: "Halo Effect" of trust - Good process makes other attributes look better.
             process_val = process_in[t]
             synergy_factor = 1.0
             
             if process_val > 0.6:
-                synergy_factor = sensitivity_params.get("synergy", 1.2) # Bonus for good governance
+                synergy_factor = sensitivity_params.get("synergy", 1.2)
             
             process_eff = process_val * sens.get("Process", 0) * synergy_factor
             people_eff = people_in[t] * sens.get("People", 0) * synergy_factor
             
-            # 4. Interaction (The Distrust Penalty Logic)
-            # Reference: Slovic (1993) "Trust Asymmetry" - negative events carry more weight.
-            # If Trust(People) input is low (<0.3) AND Tech push is high (>0.8), 
-            # ANY agent with slight skepticism gets a massive penalty.
-            
+            # 4. Interaction (Distrust Penalty Logic)
+            # If Trust(People) is low AND Tech push is high -> Backfire
             penalty_factor = 1.0
             if people_in[t] < 0.3 and tech_in[t] > 0.8:
-                penalty_factor = sensitivity_params.get("penalty", 1.5) # Distrust amplifies resistance
-                
-                # Apply penalty specifically to resistance (negative scores)
+                penalty_factor = sensitivity_params.get("penalty", 1.5)
+                # Apply penalty to resistance components (negative scores)
                 if tech_eff < 0: tech_eff *= penalty_factor
                 if place_eff < 0: place_eff *= penalty_factor
 
-            # Sum components
+            # Sum & Normalize (Scaling 0.5 for realistic range)
             raw_score = tech_eff + place_eff + process_eff + people_eff
-            
-            # 5. Normalization (Scaling Adjustment)
-            # Adjusted Scaling Factor: 0.25 -> 0.5 for realistic range (-50 to +50)
-            # Justification: Better visual differentiation in the mid-range of acceptance.
             acceptance = np.tanh(raw_score * 0.5) * 100
             
             row[agent] = acceptance
@@ -428,58 +433,54 @@ if uploaded_file:
             # Prepare Profiles
             profiles = calculate_agent_profiles(fa_df.rename(columns={"Statement": "Statement", "Category": "Category"})) 
             fa_df_sim = fa_df.copy()
-            fa_df_sim['Q_ID'] = fa_df_sim.index # Q01...
+            fa_df_sim['Q_ID'] = fa_df_sim.index 
             profiles = calculate_agent_profiles(fa_df_sim)
             
             # Weight Configuration (Editable)
             with st.expander("⚙️ Configure Agent Weights & Parameters"):
-                w_f1 = st.number_input("F1 Weight", 0.0, 1.0, calc_weights.get("F1", 0.25))
-                w_f2 = st.number_input("F2 Weight", 0.0, 1.0, calc_weights.get("F2", 0.25))
-                w_f3 = st.number_input("F3 Weight", 0.0, 1.0, calc_weights.get("F3", 0.25))
-                w_f4 = st.number_input("F4 Weight", 0.0, 1.0, calc_weights.get("F4", 0.25))
+                st.markdown("**1. Agent Weights (Population Share)**")
+                c_w1, c_w2, c_w3, c_w4 = st.columns(4)
+                w_f1 = c_w1.number_input("F1 Weight", 0.0, 1.0, calc_weights.get("F1", 0.25))
+                w_f2 = c_w2.number_input("F2 Weight", 0.0, 1.0, calc_weights.get("F2", 0.25))
+                w_f3 = c_w3.number_input("F3 Weight", 0.0, 1.0, calc_weights.get("F3", 0.25))
+                w_f4 = c_w4.number_input("F4 Weight", 0.0, 1.0, calc_weights.get("F4", 0.25))
                 custom_weights = {"F1": w_f1, "F2": w_f2, "F3": w_f3, "F4": w_f4}
                 
-                # Show Calculated Sensitivities Table
+                st.markdown("**2. Sensitivity Parameters (Global)**")
+                c_p1, c_p2, c_p3 = st.columns(3)
+                sens_penalty = c_p1.slider("Distrust Penalty", 1.0, 3.0, 1.5, 0.1, help="Resistance multiplier when trust is low")
+                sens_synergy = c_p2.slider("Governance Synergy", 1.0, 2.0, 1.2, 0.1, help="Bonus multiplier when process is high")
+                sens_people_max = c_p3.slider("People Max Input", 0.5, 1.5, 1.0, 0.1, help="Max trust level in SITE scenario")
+                
+                # Parameters for Custom Sensitivity Test
+                st.markdown("**3. Custom Scenario Limits**")
+                c_c1, c_c2, c_c3 = st.columns(3)
+                sens_tech = c_c1.slider("Max Tech Input", 0.5, 1.5, 0.8, 0.1)
+                sens_place = c_c2.slider("Max Place Input", 0.5, 1.5, 0.9, 0.1)
+                sens_process = c_c3.slider("Max Process Input", 0.5, 1.5, 1.2, 0.1)
+
+                sens_params = {
+                    "tech_max": sens_tech, "place_max": sens_place, 
+                    "process_max": sens_process, "people_max": sens_people_max, 
+                    "penalty": sens_penalty, "synergy": sens_synergy
+                }
+                
                 st.markdown("##### Agent Sensitivities (Initial Parameters)")
                 sens_df = pd.DataFrame(profiles).T
                 st.dataframe(sens_df.style.background_gradient(cmap="RdBu", vmin=-1, vmax=1).format("{:.2f}"))
 
             sim_steps = st.slider("Simulation Duration (Months)", 12, 60, 24)
-            df_bau = run_simulation(profiles, steps=sim_steps, scenario="BAU (Technocratic Push)", weights=custom_weights)
-            df_site = run_simulation(profiles, steps=sim_steps, scenario="SITE Protocol (Socio-Technical)", weights=custom_weights)
             
-            # [NEW] Sensitivity Analysis Panel
-            st.markdown("---")
-            st.subheader("🎛️ Sensitivity Analysis (Process & Place Impact)")
-            c_sens1, c_sens2 = st.columns([1, 2])
-            
-            with c_sens1:
-                sens_process = st.slider("Max Process Input", 0.5, 1.5, 1.2, 0.1, help="Transparency/Governance level")
-                sens_place = st.slider("Max Place Input", 0.5, 1.5, 0.9, 0.1, help="Incentives/Equity level")
-                sens_tech = st.slider("Max Tech Input", 0.5, 1.2, 0.8, 0.1, help="Technological push level")
-                sens_people = st.slider("Max People Input", 0.5, 1.5, 1.0, 0.1, help="Trust-building level")
-                sens_penalty = st.slider("Distrust Penalty", 1.0, 3.0, 1.5, 0.1)
-                sens_synergy = st.slider("Governance Synergy", 1.0, 2.0, 1.2, 0.1)
-                
-                sens_params = {"tech_max": sens_tech, "place_max": sens_place, "process_max": sens_process, "people_max": sens_people, "penalty": sens_penalty, "synergy": sens_synergy}
-                df_custom = run_simulation(profiles, steps=sim_steps, scenario="Sensitivity Test (Custom)", weights=custom_weights, sensitivity_params=sens_params)
+            # Run Scenarios
+            df_bau = run_simulation(profiles, steps=sim_steps, scenario="BAU (Technocratic Push)", weights=custom_weights, sensitivity_params=sens_params)
+            df_site = run_simulation(profiles, steps=sim_steps, scenario="SITE Protocol (Socio-Technical)", weights=custom_weights, sensitivity_params=sens_params)
+            df_custom = run_simulation(profiles, steps=sim_steps, scenario="Sensitivity Test (Custom)", weights=custom_weights, sensitivity_params=sens_params)
 
-            with c_sens2:
-                fig_sens = go.Figure()
-                fig_sens.add_trace(go.Scatter(x=df_bau["Step"], y=df_bau["Total Index"], name="BAU", line=dict(color='gray', dash='dot')))
-                fig_sens.add_trace(go.Scatter(x=df_site["Step"], y=df_site["Total Index"], name="SITE (Standard)", line=dict(color='blue', dash='dash')))
-                fig_sens.add_trace(go.Scatter(x=df_custom["Step"], y=df_custom["Total Index"], name="Adjusted Scenario", line=dict(color='green', width=3)))
-                
-                fig_sens.update_layout(title="Sensitivity Test: Impact of Policy Intensity", yaxis_title="Acceptance Index", template="plotly_white")
-                st.plotly_chart(fig_sens, use_container_width=True)
-
-            # Visualization: 2-Column Layout (Main Results)
-            st.markdown("---")
-            st.subheader("Main Simulation Results")
+            # Visualization: 2-Column Layout
             col_bau, col_site = st.columns(2)
             
             # [Adjusted] Y-Range: Focus on realistic data range + margin
-            y_min = -40; y_max = 100 
+            y_min = -30; y_max = 80 
             
             # Define marker styles for Grayscale compatibility
             # F1: Circle, F2: Square, F3: Diamond, F4: Triangle-Up
@@ -531,6 +532,16 @@ if uploaded_file:
                 st.plotly_chart(fig_site, use_container_width=True)
             
             st.success("The visual contrast between Red (BAU) and Blue (SITE) lines, along with distinct agent markers, highlights the structural shift from conflict to consensus.")
+            
+            # --- Sensitivity Comparison Plot ---
+            st.markdown("---")
+            st.markdown("#### Scenario Comparison (Sensitivity Check)")
+            fig_sens = go.Figure()
+            fig_sens.add_trace(go.Scatter(x=df_bau["Step"], y=df_bau["Total Index"], name="BAU", line=dict(color='red', width=2)))
+            fig_sens.add_trace(go.Scatter(x=df_site["Step"], y=df_site["Total Index"], name="SITE", line=dict(color='blue', width=2)))
+            fig_sens.add_trace(go.Scatter(x=df_custom["Step"], y=df_custom["Total Index"], name="Custom", line=dict(color='green', dash='dash', width=2)))
+            fig_sens.update_layout(yaxis_range=[y_min, y_max], template="plotly_white", title="Scenario Impact Comparison")
+            st.plotly_chart(fig_sens, use_container_width=True)
             
     except Exception as e:
         st.error(f"Error processing file: {e}")
