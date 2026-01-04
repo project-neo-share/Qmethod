@@ -6,7 +6,7 @@ Final Q-Methodology Analysis (Fixed 4 Factors + System Dynamics)
   1. Person-wise Correlation (Q-method) -> 4 Factors Typology
   2. TPPP Framework -> Systemic Feedback Loop Analysis (Causal Links)
   3. Counterfactual Simulation -> Validation of SITE Protocol
-- Update: Adjusted Y-axis scale in SITE simulation tab for better visibility of 10-50 range.
+- Update: Added dynamic Population Weight configuration based on Q-results.
 """
 
 import io
@@ -67,14 +67,6 @@ TPPP_CATEGORIES = {
 Q_TO_TPPP = {}
 for cat, items in TPPP_CATEGORIES.items():
     for item in items: Q_TO_TPPP[item] = cat
-
-# Default Population Weights (based on your analysis ~44 people)
-POPULATION_WEIGHTS = {
-    "F1": 0.45,  # Techno-Realists
-    "F2": 0.10,  # Eco-Equity Guardians
-    "F3": 0.10,  # Development Pragmatists
-    "F4": 0.35   # Tech-Skeptic Localists
-}
 
 # ==========================================
 # 2. Q-Methodology Logic
@@ -240,8 +232,10 @@ def calculate_agent_profiles(df):
         profiles[f] = agent_props
     return profiles
 
-def run_simulation(profiles, steps=24, scenario="BAU"):
+def run_simulation(profiles, steps=24, scenario="BAU", weights=None):
     history = []
+    if weights is None:
+        weights = {"F1": 0.25, "F2": 0.25, "F3": 0.25, "F4": 0.25} # Default equal
     
     if scenario == "BAU (Technocratic Push)":
         tech_in = np.linspace(0.5, 1.2, steps)
@@ -267,10 +261,11 @@ def run_simulation(profiles, steps=24, scenario="BAU"):
                 tech_eff *= 1.5 
             
             raw_score = tech_eff + place_eff + process_eff + people_eff
+            # Scaling adjusted to 0.25
             acceptance = np.tanh(raw_score * 0.25) * 100
             
             row[agent] = acceptance
-            total_acc += acceptance * POPULATION_WEIGHTS.get(agent, 0.25)
+            total_acc += acceptance * weights.get(agent, 0.0)
             
         row["Total Index"] = total_acc
         history.append(row)
@@ -296,6 +291,24 @@ if uploaded_file:
         # Run Engine
         engine = QEngine(df_raw[q_cols], n_factors=4).fit()
         
+        # Determine Population Weights from Loadings
+        # strict assignment (loading > 0.4)
+        loadings = engine.loadings
+        max_vals = np.max(np.abs(loadings), axis=1)
+        max_idxs = np.argmax(np.abs(loadings), axis=1)
+        
+        assigned_counts = {f"F{i+1}": 0 for i in range(4)}
+        total_assigned = 0
+        for i, val in enumerate(max_vals):
+            if val > 0.4: # Threshold
+                assigned_counts[f"F{max_idxs[i]+1}"] += 1
+                total_assigned += 1
+        
+        # Calculate weights (normalize to 1.0)
+        pop_weights = {}
+        for k, v in assigned_counts.items():
+            pop_weights[k] = v / total_assigned if total_assigned > 0 else 0.25
+
         # Calculate Systemic Correlations (Raw Data Level)
         tppp_scores = calculate_tppp_scores(df_raw[q_cols], TPPP_CATEGORIES)
         corr_matrix = tppp_scores.corr(method='spearman')
@@ -341,6 +354,8 @@ if uploaded_file:
             if meta_cols:
                 loadings_df = pd.concat([df_raw[meta_cols].reset_index(drop=True), loadings_df], axis=1)
             st.dataframe(loadings_df.style.background_gradient(cmap="Blues", subset=["F1","F2","F3","F4"]))
+            st.metric("Total Assigned Respondents", total_assigned)
+            st.write("Calculated Weights:", pop_weights)
 
         with tab5:
             st.subheader("Counterfactual Simulation (SITE Protocol)")
@@ -348,17 +363,21 @@ if uploaded_file:
             
             # Prepare Profiles
             profiles = calculate_agent_profiles(fa_df.rename(columns={"Statement": "Statement", "Category": "Category"})) 
-            # Note: calculate_agent_profiles expects factor cols. fa_df has them.
-            # fa_df has 'Category' and 'Statement' cols added. But 'Q_ID' is needed. 
-            # fa_df index is Q01..Q24. Let's make it a column for the function.
             fa_df_sim = fa_df.copy()
             fa_df_sim['Q_ID'] = fa_df_sim.index # Q01...
-            
             profiles = calculate_agent_profiles(fa_df_sim)
             
+            # Weight Configuration (Editable)
+            with st.expander("⚙️ Configure Agent Weights"):
+                w_f1 = st.number_input("F1 Weight", 0.0, 1.0, pop_weights.get("F1", 0.25))
+                w_f2 = st.number_input("F2 Weight", 0.0, 1.0, pop_weights.get("F2", 0.25))
+                w_f3 = st.number_input("F3 Weight", 0.0, 1.0, pop_weights.get("F3", 0.25))
+                w_f4 = st.number_input("F4 Weight", 0.0, 1.0, pop_weights.get("F4", 0.25))
+                custom_weights = {"F1": w_f1, "F2": w_f2, "F3": w_f3, "F4": w_f4}
+
             sim_steps = st.slider("Simulation Duration (Months)", 12, 60, 24)
-            df_bau = run_simulation(profiles, steps=sim_steps, scenario="BAU (Technocratic Push)")
-            df_site = run_simulation(profiles, steps=sim_steps, scenario="SITE Protocol (Socio-Technical)")
+            df_bau = run_simulation(profiles, steps=sim_steps, scenario="BAU (Technocratic Push)", weights=custom_weights)
+            df_site = run_simulation(profiles, steps=sim_steps, scenario="SITE Protocol (Socio-Technical)", weights=custom_weights)
             
             # Merged Plot (2 Rows Subplot)
             fig_merged = make_subplots(rows=2, cols=1, 
@@ -377,7 +396,6 @@ if uploaded_file:
             fig_merged.add_hline(y=0, line_dash="dash", line_color="gray", row=2, col=1)
             
             # [Update] Set Y-Axis Range to visualize data better (focus on populated range)
-            # Find min/max to set range dynamically or set a fixed reasonable range like -30 to 60
             y_min = min(df_bau["Total Index"].min(), df_site["Total Index"].min(), df_bau["F4"].min(), df_site["F4"].min()) - 10
             y_max = max(df_bau["Total Index"].max(), df_site["Total Index"].max(), df_bau["F4"].max(), df_site["F4"].max()) + 10
             
