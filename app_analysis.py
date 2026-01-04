@@ -73,10 +73,10 @@ for cat, items in TPPP_CATEGORIES.items():
 
 # Default Population Weights (based on your analysis ~44 people)
 POPULATION_WEIGHTS = {
-    "F1": 0.45,  # Techno-Realists
-    "F2": 0.10,  # Eco-Equity Guardians
-    "F3": 0.10,  # Development Pragmatists
-    "F4": 0.35   # Tech-Skeptic Localists
+    "F1": 0.36,  # Techno-Realists
+    "F2": 0.20,  # Eco-Equity Guardians
+    "F3": 0.18,  # Development Pragmatists
+    "F4": 0.26   # Tech-Skeptic Localists
 }
 
 # ==========================================
