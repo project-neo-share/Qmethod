@@ -6,10 +6,7 @@ Final Q-Methodology Analysis (Fixed 4 Factors + System Dynamics)
   1. Person-wise Correlation (Q-method) -> 4 Factors Typology
   2. TPPP Framework -> Systemic Feedback Loop Analysis (Causal Links)
   3. Counterfactual Simulation -> Validation of SITE Protocol
-- Update: 
-  - Adjusted Simulation Y-Axis Scale (-40 to 100) for better visibility of 10-50 range.
-  - Added Parameter Table display.
-  - Enhanced visualization (Grayscale markers for Agents, Red/Blue for Total).
+- Update: Adjusted Y-axis scale in SITE simulation tab for better visibility of 10-50 range.
 """
 
 import io
@@ -385,7 +382,7 @@ if uploaded_file:
             col_bau, col_site = st.columns(2)
             
             # [Adjusted] Y-Range: Focus on realistic data range + margin
-            y_min = -40; y_max = 100 
+            y_min = -20; y_max = 60 # Adjusted for visibility of 10-50 range
             
             # Define marker styles for Grayscale compatibility
             # F1: Circle, F2: Square, F3: Diamond, F4: Triangle-Up
