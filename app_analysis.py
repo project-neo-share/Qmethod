@@ -98,7 +98,8 @@ class QEngine:
         temp_data[inds] = np.take(row_means, inds[0])
         self.data = np.nan_to_num(temp_data, nan=0.0)
         self.n_factors = n_factors
-        
+        self.calculated_weights = {} # Store calculated weights
+
     def fit(self):
         R, _ = spearmanr(self.data, axis=1)
         self.R = np.nan_to_num(R, nan=0.0)
@@ -110,6 +111,14 @@ class QEngine:
         valid_eigvals = np.maximum(self.eigvals[:k], 0)
         L = eigvecs[:, :k] * np.sqrt(valid_eigvals)
         self.loadings = self._varimax(L)
+        
+        # Calculate Population Weights from Loadings
+        max_idxs = np.argmax(np.abs(self.loadings), axis=1)
+        counts = {f"F{i+1}": 0 for i in range(k)}
+        for i in max_idxs: counts[f"F{i+1}"] += 1
+        total = len(max_idxs)
+        self.calculated_weights = {k: v/total for k, v in counts.items()}
+
         z_data = standardize_rows(self.data)
         self.factor_arrays = self._calculate_factor_arrays(self.loadings, z_data)
         return self
@@ -436,8 +445,6 @@ if uploaded_file:
                 st.dataframe(sens_df.style.background_gradient(cmap="RdBu", vmin=-1, vmax=1).format("{:.2f}"))
 
             sim_steps = st.slider("Simulation Duration (Months)", 12, 60, 24)
-            
-            # Run Scenarios
             df_bau = run_simulation(profiles, steps=sim_steps, scenario="BAU (Technocratic Push)", weights=custom_weights)
             df_site = run_simulation(profiles, steps=sim_steps, scenario="SITE Protocol (Socio-Technical)", weights=custom_weights)
             
