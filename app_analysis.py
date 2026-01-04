@@ -251,7 +251,10 @@ def run_simulation(profiles, steps=24, scenario="BAU", weights=None, sensitivity
         sensitivity_params = {
             "tech_max": 0.8,
             "place_max": 0.9,
-            "process_max": 1.2
+            "process_max": 1.2,
+            "people_max": 1.0,
+            "penalty": 1.5,
+            "synergy": 1.2
         }
 
     # [Refined Logic] Policy Inputs based on Literature
@@ -274,14 +277,14 @@ def run_simulation(profiles, steps=24, scenario="BAU", weights=None, sensitivity
         # Justification: Procedural justice acts as a mediator for acceptance (Besley, 2010).
         process_in = np.linspace(0.5, 1.2, steps) 
         # People: Increasing (Trust building)
-        people_in = np.linspace(0.4, 1.0, steps)
+        people_in = np.linspace(0.4, sensitivity_params["people_max"], steps)
         
     elif scenario == "Sensitivity Test (Custom)":
         # Dynamic inputs based on sliders
         tech_in = np.linspace(0.4, sensitivity_params["tech_max"], steps)
         place_in = np.linspace(0.4, sensitivity_params["place_max"], steps)
         process_in = np.linspace(0.5, sensitivity_params["process_max"], steps)
-        people_in = np.linspace(0.4, 1.0, steps)
+        people_in = np.linspace(0.4, sensitivity_params["people_max"], steps)
 
     for t in range(steps):
         row = {"Step": t}
@@ -301,7 +304,7 @@ def run_simulation(profiles, steps=24, scenario="BAU", weights=None, sensitivity
             synergy_factor = 1.0
             
             if process_val > 0.6:
-                synergy_factor = 1.2 # Bonus for good governance
+                synergy_factor = sensitivity_params.get("synergy", 1.2) # Bonus for good governance
             
             process_eff = process_val * sens.get("Process", 0) * synergy_factor
             people_eff = people_in[t] * sens.get("People", 0) * synergy_factor
@@ -313,7 +316,7 @@ def run_simulation(profiles, steps=24, scenario="BAU", weights=None, sensitivity
             
             penalty_factor = 1.0
             if people_in[t] < 0.3 and tech_in[t] > 0.8:
-                penalty_factor = 1.5 # Distrust amplifies resistance
+                penalty_factor = sensitivity_params.get("penalty", 1.5) # Distrust amplifies resistance
                 
                 # Apply penalty specifically to resistance (negative scores)
                 if tech_eff < 0: tech_eff *= penalty_factor
@@ -447,8 +450,11 @@ if uploaded_file:
                 sens_process = st.slider("Max Process Input", 0.5, 1.5, 1.2, 0.1, help="Transparency/Governance level")
                 sens_place = st.slider("Max Place Input", 0.5, 1.5, 0.9, 0.1, help="Incentives/Equity level")
                 sens_tech = st.slider("Max Tech Input", 0.5, 1.2, 0.8, 0.1, help="Technological push level")
+sens_people = st.slider("Max People Input", 0.5, 1.5, 1.0, 0.1, help="Trust-building level")
+sens_penalty = st.slider("Distrust Penalty", 1.0, 3.0, 1.5, 0.1)
+sens_synergy = st.slider("Governance Synergy", 1.0, 2.0, 1.2, 0.1)
                 
-                sens_params = {"tech_max": sens_tech, "place_max": sens_place, "process_max": sens_process}
+                sens_params = {"tech_max": sens_tech, "place_max": sens_place, "process_max": sens_process, "people_max": sens_people, "penalty": sens_penalty, "synergy": sens_synergy}
                 df_custom = run_simulation(profiles, steps=sim_steps, scenario="Sensitivity Test (Custom)", weights=custom_weights, sensitivity_params=sens_params)
 
             with c_sens2:
