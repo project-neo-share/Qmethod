@@ -279,14 +279,14 @@ def run_simulation(profiles, steps=24, scenario="BAU", weights=None, sensitivity
         
     elif scenario == "SITE Protocol (Socio-Technical)":
         # Tech: Moderate (Validated)
-        tech_in = np.linspace(0.4, 0.8, steps)
+        tech_in = np.linspace(0.4, 1.0, steps)
         # Place: High (Incentives, Equity)
-        place_in = np.linspace(0.4, 0.9, steps)
+        place_in = np.linspace(0.4, 0.5, steps)
         # Process: High (Transparency - Core Driver)
         # Justification: Procedural justice acts as a mediator for acceptance (Besley, 2010).
-        process_in = np.linspace(0.5, 1.2, steps) 
+        process_in = np.linspace(0.5, 1.5, steps) 
         # People: Increasing (Trust building)
-        people_in = np.linspace(0.4, sensitivity_params["people_max"], steps)
+        people_in = np.linspace(0.8, sensitivity_params["people_max"], steps)
         
     elif scenario == "Sensitivity Test (Custom)":
         # Dynamic inputs based on sliders
