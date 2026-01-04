@@ -6,7 +6,7 @@ Final Q-Methodology Analysis (Fixed 4 Factors + System Dynamics)
   1. Person-wise Correlation (Q-method) -> 4 Factors Typology
   2. TPPP Framework -> Systemic Feedback Loop Analysis (Causal Links)
   3. Counterfactual Simulation -> Validation of SITE Protocol
-- Update: Added dynamic Population Weight configuration based on Q-results.
+- Update: Enhanced visualization (Grayscale markers for Agents, Red/Blue for Total) + Parameter Table.
 """
 
 import io
@@ -67,6 +67,14 @@ TPPP_CATEGORIES = {
 Q_TO_TPPP = {}
 for cat, items in TPPP_CATEGORIES.items():
     for item in items: Q_TO_TPPP[item] = cat
+
+# Default Population Weights (based on your analysis ~44 people)
+POPULATION_WEIGHTS = {
+    "F1": 0.45,  # Techno-Realists
+    "F2": 0.10,  # Eco-Equity Guardians
+    "F3": 0.10,  # Development Pragmatists
+    "F4": 0.35   # Tech-Skeptic Localists
+}
 
 # ==========================================
 # 2. Q-Methodology Logic
@@ -234,8 +242,6 @@ def calculate_agent_profiles(df):
 
 def run_simulation(profiles, steps=24, scenario="BAU", weights=None):
     history = []
-    if weights is None:
-        weights = {"F1": 0.25, "F2": 0.25, "F3": 0.25, "F4": 0.25} # Default equal
     
     if scenario == "BAU (Technocratic Push)":
         tech_in = np.linspace(0.5, 1.2, steps)
@@ -261,11 +267,10 @@ def run_simulation(profiles, steps=24, scenario="BAU", weights=None):
                 tech_eff *= 1.5 
             
             raw_score = tech_eff + place_eff + process_eff + people_eff
-            # Scaling adjusted to 0.25
             acceptance = np.tanh(raw_score * 0.25) * 100
             
             row[agent] = acceptance
-            total_acc += acceptance * weights.get(agent, 0.0)
+            total_acc += acceptance * weights.get(agent, 0.25)
             
         row["Total Index"] = total_acc
         history.append(row)
@@ -291,24 +296,6 @@ if uploaded_file:
         # Run Engine
         engine = QEngine(df_raw[q_cols], n_factors=4).fit()
         
-        # Determine Population Weights from Loadings
-        # strict assignment (loading > 0.4)
-        loadings = engine.loadings
-        max_vals = np.max(np.abs(loadings), axis=1)
-        max_idxs = np.argmax(np.abs(loadings), axis=1)
-        
-        assigned_counts = {f"F{i+1}": 0 for i in range(4)}
-        total_assigned = 0
-        for i, val in enumerate(max_vals):
-            if val > 0.4: # Threshold
-                assigned_counts[f"F{max_idxs[i]+1}"] += 1
-                total_assigned += 1
-        
-        # Calculate weights (normalize to 1.0)
-        pop_weights = {}
-        for k, v in assigned_counts.items():
-            pop_weights[k] = v / total_assigned if total_assigned > 0 else 0.25
-
         # Calculate Systemic Correlations (Raw Data Level)
         tppp_scores = calculate_tppp_scores(df_raw[q_cols], TPPP_CATEGORIES)
         corr_matrix = tppp_scores.corr(method='spearman')
@@ -353,9 +340,16 @@ if uploaded_file:
             meta_cols = [c for c in df_raw.columns if c not in q_cols]
             if meta_cols:
                 loadings_df = pd.concat([df_raw[meta_cols].reset_index(drop=True), loadings_df], axis=1)
+            
+            # Determine weights
+            max_idxs = np.argmax(np.abs(engine.loadings), axis=1)
+            counts = {f"F{i+1}": 0 for i in range(4)}
+            for i in max_idxs: counts[f"F{i+1}"] += 1
+            total = len(max_idxs)
+            calc_weights = {k: v/total for k, v in counts.items()}
+            
             st.dataframe(loadings_df.style.background_gradient(cmap="Blues", subset=["F1","F2","F3","F4"]))
-            st.metric("Total Assigned Respondents", total_assigned)
-            st.write("Calculated Weights:", pop_weights)
+            st.write("Calculated Weights from Data:", calc_weights)
 
         with tab5:
             st.subheader("Counterfactual Simulation (SITE Protocol)")
@@ -368,45 +362,78 @@ if uploaded_file:
             profiles = calculate_agent_profiles(fa_df_sim)
             
             # Weight Configuration (Editable)
-            with st.expander("⚙️ Configure Agent Weights"):
-                w_f1 = st.number_input("F1 Weight", 0.0, 1.0, pop_weights.get("F1", 0.25))
-                w_f2 = st.number_input("F2 Weight", 0.0, 1.0, pop_weights.get("F2", 0.25))
-                w_f3 = st.number_input("F3 Weight", 0.0, 1.0, pop_weights.get("F3", 0.25))
-                w_f4 = st.number_input("F4 Weight", 0.0, 1.0, pop_weights.get("F4", 0.25))
+            with st.expander("⚙️ Configure Agent Weights & Parameters"):
+                w_f1 = st.number_input("F1 Weight", 0.0, 1.0, calc_weights.get("F1", 0.25))
+                w_f2 = st.number_input("F2 Weight", 0.0, 1.0, calc_weights.get("F2", 0.25))
+                w_f3 = st.number_input("F3 Weight", 0.0, 1.0, calc_weights.get("F3", 0.25))
+                w_f4 = st.number_input("F4 Weight", 0.0, 1.0, calc_weights.get("F4", 0.25))
                 custom_weights = {"F1": w_f1, "F2": w_f2, "F3": w_f3, "F4": w_f4}
+                
+                # Show Calculated Sensitivities Table
+                st.markdown("##### Agent Sensitivities (Initial Parameters)")
+                sens_df = pd.DataFrame(profiles).T
+                st.dataframe(sens_df.style.background_gradient(cmap="RdBu", vmin=-1, vmax=1).format("{:.2f}"))
 
             sim_steps = st.slider("Simulation Duration (Months)", 12, 60, 24)
             df_bau = run_simulation(profiles, steps=sim_steps, scenario="BAU (Technocratic Push)", weights=custom_weights)
             df_site = run_simulation(profiles, steps=sim_steps, scenario="SITE Protocol (Socio-Technical)", weights=custom_weights)
             
-            # Merged Plot (2 Rows Subplot)
-            fig_merged = make_subplots(rows=2, cols=1, 
-                                     shared_xaxes=True, 
-                                     vertical_spacing=0.1,
-                                     subplot_titles=("(A) Total Acceptance Trajectory", "(B) Key Driver Dynamics (F4: Tech-Skeptic Localists)"))
+            # Visualization: 2-Column Layout
+            col_bau, col_site = st.columns(2)
             
-            # Row 1: Total Index
-            fig_merged.add_trace(go.Scatter(x=df_bau["Step"], y=df_bau["Total Index"], name="BAU (Deadlock)", line=dict(color='red', width=3)), row=1, col=1)
-            fig_merged.add_trace(go.Scatter(x=df_site["Step"], y=df_site["Total Index"], name="SITE (Consensus)", line=dict(color='blue', width=3)), row=1, col=1)
-            fig_merged.add_hline(y=0, line_dash="dash", line_color="black", annotation_text="Threshold", row=1, col=1)
+            # Common Y-range for comparison
+            y_min = -100; y_max = 100
             
-            # Row 2: F4 Detail
-            fig_merged.add_trace(go.Scatter(x=df_bau["Step"], y=df_bau["F4"], name="F4 (BAU)", line=dict(color='red', dash='dot')), row=2, col=1)
-            fig_merged.add_trace(go.Scatter(x=df_site["Step"], y=df_site["F4"], name="F4 (SITE)", line=dict(color='blue', dash='dot')), row=2, col=1)
-            fig_merged.add_hline(y=0, line_dash="dash", line_color="gray", row=2, col=1)
+            # Define marker styles for Grayscale compatibility
+            # F1: Circle, F2: Square, F3: Diamond, F4: Triangle-Up
+            markers = {"F1": "circle", "F2": "square", "F3": "diamond", "F4": "triangle-up"}
+            dash_styles = {"F1": "dot", "F2": "dot", "F3": "dot", "F4": "dot"} # Dotted for agents
             
-            # [Update] Set Y-Axis Range to visualize data better (focus on populated range)
-            y_min = min(df_bau["Total Index"].min(), df_site["Total Index"].min(), df_bau["F4"].min(), df_site["F4"].min()) - 10
-            y_max = max(df_bau["Total Index"].max(), df_site["Total Index"].max(), df_bau["F4"].max(), df_site["F4"].max()) + 10
+            # --- BAU Plot ---
+            with col_bau:
+                fig_bau = go.Figure()
+                # Agents (Grayscale)
+                for agent in ["F1", "F2", "F3", "F4"]:
+                    fig_bau.add_trace(go.Scatter(
+                        x=df_bau["Step"], y=df_bau[agent], name=agent,
+                        mode='lines+markers',
+                        line=dict(color='gray', width=1, dash=dash_styles[agent]),
+                        marker=dict(symbol=markers[agent], size=6, color='black'),
+                        opacity=0.6
+                    ))
+                # Total Index (Red Solid)
+                fig_bau.add_trace(go.Scatter(
+                    x=df_bau["Step"], y=df_bau["Total Index"], name="Total (BAU)",
+                    mode='lines',
+                    line=dict(color='#E63946', width=4)
+                ))
+                fig_bau.add_hline(y=0, line_dash="dash", line_color="black")
+                fig_bau.update_layout(title="(A) BAU Scenario (Deadlock)", yaxis_range=[y_min, y_max], template="plotly_white", showlegend=False)
+                st.plotly_chart(fig_bau, use_container_width=True)
+
+            # --- SITE Plot ---
+            with col_site:
+                fig_site = go.Figure()
+                # Agents (Grayscale)
+                for agent in ["F1", "F2", "F3", "F4"]:
+                    fig_site.add_trace(go.Scatter(
+                        x=df_site["Step"], y=df_site[agent], name=agent,
+                        mode='lines+markers',
+                        line=dict(color='gray', width=1, dash=dash_styles[agent]),
+                        marker=dict(symbol=markers[agent], size=6, color='black'),
+                        opacity=0.6
+                    ))
+                # Total Index (Blue Solid)
+                fig_site.add_trace(go.Scatter(
+                    x=df_site["Step"], y=df_site["Total Index"], name="Total (SITE)",
+                    mode='lines',
+                    line=dict(color='#457B9D', width=4)
+                ))
+                fig_site.add_hline(y=0, line_dash="dash", line_color="black")
+                fig_site.update_layout(title="(B) SITE Protocol (Consensus)", yaxis_range=[y_min, y_max], template="plotly_white", showlegend=True)
+                st.plotly_chart(fig_site, use_container_width=True)
             
-            fig_merged.update_layout(height=700, template="plotly_white", title_text="Simulation Results: Aggregate & Micro Dynamics")
-            fig_merged.update_yaxes(title_text="Acceptance Index", range=[y_min, y_max], row=1, col=1)
-            fig_merged.update_yaxes(title_text="Acceptance Index", range=[y_min, y_max], row=2, col=1)
-            fig_merged.update_xaxes(title_text="Time Steps (Months)", row=2, col=1)
-            
-            st.plotly_chart(fig_merged, use_container_width=True)
-            
-            st.success("The merged figure demonstrates that the rise in total acceptance (A) is structurally driven by the reversal of F4's resistance (B).")
+            st.success("The visual contrast between Red (BAU) and Blue (SITE) lines, along with distinct agent markers, highlights the structural shift from conflict to consensus.")
             
     except Exception as e:
         st.error(f"Error processing file: {e}")
