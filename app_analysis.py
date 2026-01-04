@@ -7,8 +7,9 @@ Final Q-Methodology Analysis (Fixed 4 Factors + System Dynamics)
   2. TPPP Framework -> Systemic Feedback Loop Analysis (Causal Links)
   3. Counterfactual Simulation -> Validation of SITE Protocol
 - Update: 
-  - Refined Simulation Logic with 'Distrust Penalty' and 'Synergy Bonus' based on literature (Slovic, 1993; Besley, 2010).
+  - Refined Simulation Logic with 'Distrust Penalty' and 'Synergy Bonus' based on literature.
   - Adjusted Scaling Factor (0.5) for realistic score range.
+  - Dynamic Inputs for BAU (Decreasing Trust) & SITE (Synergy Threshold).
 """
 
 import io
@@ -247,13 +248,14 @@ def run_simulation(profiles, steps=24, scenario="BAU", weights=None):
     
     # [Refined Logic] Policy Inputs based on Literature
     if scenario == "BAU (Technocratic Push)":
-        # Tech: Increasing (Efficiency drive)
-        tech_in = np.linspace(0.5, 1.0, steps)
+        # Tech: Increasing aggressively (Efficiency drive)
+        tech_in = np.linspace(0.5, 1.2, steps)
         # Place: Low & Static (Ignoring local context)
         place_in = np.full(steps, 0.2)
         # Process & People: Decreasing (Erosion of trust over time due to neglect)
-        process_in = np.linspace(0.3, 0.1, steps) 
-        people_in = np.linspace(0.3, 0.1, steps) 
+        # Justification: "Trust Asymmetry Principle" - Negative events (neglect) impact trust more than positive ones (Slovic, 1993).
+        process_in = np.linspace(0.3, 0.0, steps) 
+        people_in = np.linspace(0.3, 0.0, steps) 
         
     elif scenario == "SITE Protocol (Socio-Technical)":
         # Tech: Moderate (Validated)
@@ -261,6 +263,7 @@ def run_simulation(profiles, steps=24, scenario="BAU", weights=None):
         # Place: High (Incentives, Equity)
         place_in = np.linspace(0.4, 0.9, steps)
         # Process: High (Transparency - Core Driver)
+        # Justification: Procedural justice acts as a mediator for acceptance (Besley, 2010).
         process_in = np.linspace(0.5, 1.2, steps) 
         # People: Increasing (Trust building)
         people_in = np.linspace(0.4, 1.0, steps) 
@@ -278,7 +281,7 @@ def run_simulation(profiles, steps=24, scenario="BAU", weights=None):
             
             # 3. Process/People (Synergy Bonus Logic)
             # If Process input is high (>0.6), it boosts the positive impact of Tech/Place
-            # Reference: Besley (2010) on procedural justice as a mediator
+            # Theory: "Halo Effect" of trust - Good process makes other attributes look better.
             process_val = process_in[t]
             synergy_factor = 1.0
             
@@ -289,7 +292,7 @@ def run_simulation(profiles, steps=24, scenario="BAU", weights=None):
             people_eff = people_in[t] * sens.get("People", 0) * synergy_factor
             
             # 4. Interaction (The Distrust Penalty Logic)
-            # Reference: Slovic (1993) "Trust Asymmetry" - negative events carry more weight
+            # Reference: Slovic (1993) "Trust Asymmetry" - negative events carry more weight.
             # If Trust(People) input is low (<0.3) AND Tech push is high (>0.8), 
             # ANY agent with slight skepticism gets a massive penalty.
             
@@ -306,6 +309,7 @@ def run_simulation(profiles, steps=24, scenario="BAU", weights=None):
             
             # 5. Normalization (Scaling Adjustment)
             # Adjusted Scaling Factor: 0.25 -> 0.5 for realistic range (-50 to +50)
+            # Justification: Better visual differentiation in the mid-range of acceptance.
             acceptance = np.tanh(raw_score * 0.5) * 100
             
             row[agent] = acceptance
