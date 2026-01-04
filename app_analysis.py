@@ -248,7 +248,7 @@ def run_simulation(profiles, steps=24, scenario="BAU", weights=None):
     # [Refined Logic] Policy Inputs based on Literature
     if scenario == "BAU (Technocratic Push)":
         # Tech: Increasing (Efficiency drive)
-        tech_in = np.linspace(0.5, 1.2, steps)
+        tech_in = np.linspace(0.5, 1.0, steps)
         # Place: Low & Static (Ignoring local context)
         place_in = np.full(steps, 0.2)
         # Process & People: Decreasing (Erosion of trust over time due to neglect)
@@ -417,33 +417,62 @@ if uploaded_file:
             df_bau = run_simulation(profiles, steps=sim_steps, scenario="BAU (Technocratic Push)", weights=custom_weights)
             df_site = run_simulation(profiles, steps=sim_steps, scenario="SITE Protocol (Socio-Technical)", weights=custom_weights)
             
-            # Merged Plot (2 Rows Subplot)
-            fig_merged = make_subplots(rows=2, cols=1, 
-                                     shared_xaxes=True, 
-                                     vertical_spacing=0.1,
-                                     subplot_titles=("(A) Total Acceptance Trajectory", "(B) Key Driver Dynamics (F4: Tech-Skeptic Localists)"))
+            # Visualization: 2-Column Layout
+            col_bau, col_site = st.columns(2)
             
-            # Row 1: Total Index
-            fig_merged.add_trace(go.Scatter(x=df_bau["Step"], y=df_bau["Total Index"], name="BAU (Deadlock)", line=dict(color='red', width=3)), row=1, col=1)
-            fig_merged.add_trace(go.Scatter(x=df_site["Step"], y=df_site["Total Index"], name="SITE (Consensus)", line=dict(color='blue', width=3)), row=1, col=1)
-            fig_merged.add_hline(y=0, line_dash="dash", line_color="black", annotation_text="Threshold", row=1, col=1)
-            
-            # Row 2: F4 Detail
-            fig_merged.add_trace(go.Scatter(x=df_bau["Step"], y=df_bau["F4"], name="F4 (BAU)", line=dict(color='red', dash='dot')), row=2, col=1)
-            fig_merged.add_trace(go.Scatter(x=df_site["Step"], y=df_site["F4"], name="F4 (SITE)", line=dict(color='blue', dash='dot')), row=2, col=1)
-            fig_merged.add_hline(y=0, line_dash="dash", line_color="gray", row=2, col=1)
-            
-            # [Update] Set Y-Axis Range to visualize data better (focus on populated range)
+            # [Adjusted] Y-Range: Focus on realistic data range + margin
             y_min = -40; y_max = 100 
             
-            fig_merged.update_layout(height=700, template="plotly_white", title_text="Simulation Results: Aggregate & Micro Dynamics")
-            fig_merged.update_yaxes(title_text="Acceptance Index", range=[y_min, y_max], row=1, col=1)
-            fig_merged.update_yaxes(title_text="Acceptance Index", range=[y_min, y_max], row=2, col=1)
-            fig_merged.update_xaxes(title_text="Time Steps (Months)", row=2, col=1)
+            # Define marker styles for Grayscale compatibility
+            # F1: Circle, F2: Square, F3: Diamond, F4: Triangle-Up
+            markers = {"F1": "circle", "F2": "square", "F3": "diamond", "F4": "triangle-up"}
+            dash_styles = {"F1": "dot", "F2": "dot", "F3": "dot", "F4": "dot"} # Dotted for agents
             
-            st.plotly_chart(fig_merged, use_container_width=True)
+            # --- BAU Plot ---
+            with col_bau:
+                fig_bau = go.Figure()
+                # Agents (Grayscale)
+                for agent in ["F1", "F2", "F3", "F4"]:
+                    fig_bau.add_trace(go.Scatter(
+                        x=df_bau["Step"], y=df_bau[agent], name=agent,
+                        mode='lines+markers',
+                        line=dict(color='gray', width=1, dash=dash_styles[agent]),
+                        marker=dict(symbol=markers[agent], size=6, color='black'),
+                        opacity=0.6
+                    ))
+                # Total Index (Red Solid)
+                fig_bau.add_trace(go.Scatter(
+                    x=df_bau["Step"], y=df_bau["Total Index"], name="Total (BAU)",
+                    mode='lines',
+                    line=dict(color='#E63946', width=4)
+                ))
+                fig_bau.add_hline(y=0, line_dash="dash", line_color="black")
+                fig_bau.update_layout(title="(A) BAU Scenario (Deadlock)", yaxis_range=[y_min, y_max], template="plotly_white", showlegend=False)
+                st.plotly_chart(fig_bau, use_container_width=True)
+
+            # --- SITE Plot ---
+            with col_site:
+                fig_site = go.Figure()
+                # Agents (Grayscale)
+                for agent in ["F1", "F2", "F3", "F4"]:
+                    fig_site.add_trace(go.Scatter(
+                        x=df_site["Step"], y=df_site[agent], name=agent,
+                        mode='lines+markers',
+                        line=dict(color='gray', width=1, dash=dash_styles[agent]),
+                        marker=dict(symbol=markers[agent], size=6, color='black'),
+                        opacity=0.6
+                    ))
+                # Total Index (Blue Solid)
+                fig_site.add_trace(go.Scatter(
+                    x=df_site["Step"], y=df_site["Total Index"], name="Total (SITE)",
+                    mode='lines',
+                    line=dict(color='#457B9D', width=4)
+                ))
+                fig_site.add_hline(y=0, line_dash="dash", line_color="black")
+                fig_site.update_layout(title="(B) SITE Protocol (Consensus)", yaxis_range=[y_min, y_max], template="plotly_white", showlegend=True)
+                st.plotly_chart(fig_site, use_container_width=True)
             
-            st.success("The simulation incorporates 'Distrust Penalty' (Slovic, 1993) and 'Synergy Bonus' (Besley, 2010), showing a clear divergence between BAU deadlock and SITE consensus.")
+            st.success("The visual contrast between Red (BAU) and Blue (SITE) lines, along with distinct agent markers, highlights the structural shift from conflict to consensus.")
             
     except Exception as e:
         st.error(f"Error processing file: {e}")
