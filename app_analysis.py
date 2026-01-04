@@ -450,9 +450,9 @@ if uploaded_file:
                 sens_process = st.slider("Max Process Input", 0.5, 1.5, 1.2, 0.1, help="Transparency/Governance level")
                 sens_place = st.slider("Max Place Input", 0.5, 1.5, 0.9, 0.1, help="Incentives/Equity level")
                 sens_tech = st.slider("Max Tech Input", 0.5, 1.2, 0.8, 0.1, help="Technological push level")
-sens_people = st.slider("Max People Input", 0.5, 1.5, 1.0, 0.1, help="Trust-building level")
-sens_penalty = st.slider("Distrust Penalty", 1.0, 3.0, 1.5, 0.1)
-sens_synergy = st.slider("Governance Synergy", 1.0, 2.0, 1.2, 0.1)
+                sens_people = st.slider("Max People Input", 0.5, 1.5, 1.0, 0.1, help="Trust-building level")
+                sens_penalty = st.slider("Distrust Penalty", 1.0, 3.0, 1.5, 0.1)
+                sens_synergy = st.slider("Governance Synergy", 1.0, 2.0, 1.2, 0.1)
                 
                 sens_params = {"tech_max": sens_tech, "place_max": sens_place, "process_max": sens_process, "people_max": sens_people, "penalty": sens_penalty, "synergy": sens_synergy}
                 df_custom = run_simulation(profiles, steps=sim_steps, scenario="Sensitivity Test (Custom)", weights=custom_weights, sensitivity_params=sens_params)
