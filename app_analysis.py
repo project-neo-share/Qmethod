@@ -6,7 +6,10 @@ Final Q-Methodology Analysis (Fixed 4 Factors + System Dynamics)
   1. Person-wise Correlation (Q-method) -> 4 Factors Typology
   2. TPPP Framework -> Systemic Feedback Loop Analysis (Causal Links)
   3. Counterfactual Simulation -> Validation of SITE Protocol
-- Update: Adjusted Y-axis scale in SITE simulation tab for better visibility of 10-50 range.
+- Update: 
+  - Dynamic Population Weights based on actual Respondent Counts.
+  - Adjusted Simulation Y-Axis Scale (-40 to 100).
+  - Enhanced visualization (Grayscale markers for Agents, Red/Blue for Total).
 """
 
 import io
@@ -68,14 +71,6 @@ Q_TO_TPPP = {}
 for cat, items in TPPP_CATEGORIES.items():
     for item in items: Q_TO_TPPP[item] = cat
 
-# Default Population Weights (based on your analysis ~44 people)
-POPULATION_WEIGHTS = {
-    "F1": 0.45,  # Techno-Realists
-    "F2": 0.10,  # Eco-Equity Guardians
-    "F3": 0.10,  # Development Pragmatists
-    "F4": 0.35   # Tech-Skeptic Localists
-}
-
 # ==========================================
 # 2. Q-Methodology Logic
 # ==========================================
@@ -95,7 +90,8 @@ class QEngine:
         temp_data[inds] = np.take(row_means, inds[0])
         self.data = np.nan_to_num(temp_data, nan=0.0)
         self.n_factors = n_factors
-        
+        self.calculated_weights = {} # Store calculated weights
+
     def fit(self):
         R, _ = spearmanr(self.data, axis=1)
         self.R = np.nan_to_num(R, nan=0.0)
@@ -107,6 +103,14 @@ class QEngine:
         valid_eigvals = np.maximum(self.eigvals[:k], 0)
         L = eigvecs[:, :k] * np.sqrt(valid_eigvals)
         self.loadings = self._varimax(L)
+        
+        # Calculate Population Weights from Loadings
+        max_idxs = np.argmax(np.abs(self.loadings), axis=1)
+        counts = {f"F{i+1}": 0 for i in range(k)}
+        for i in max_idxs: counts[f"F{i+1}"] += 1
+        total = len(max_idxs)
+        self.calculated_weights = {k: v/total for k, v in counts.items()}
+
         z_data = standardize_rows(self.data)
         self.factor_arrays = self._calculate_factor_arrays(self.loadings, z_data)
         return self
@@ -342,11 +346,7 @@ if uploaded_file:
                 loadings_df = pd.concat([df_raw[meta_cols].reset_index(drop=True), loadings_df], axis=1)
             
             # Determine weights
-            max_idxs = np.argmax(np.abs(engine.loadings), axis=1)
-            counts = {f"F{i+1}": 0 for i in range(4)}
-            for i in max_idxs: counts[f"F{i+1}"] += 1
-            total = len(max_idxs)
-            calc_weights = {k: v/total for k, v in counts.items()}
+            calc_weights = engine.calculated_weights
             
             st.dataframe(loadings_df.style.background_gradient(cmap="Blues", subset=["F1","F2","F3","F4"]))
             st.write("Calculated Weights from Data:", calc_weights)
@@ -382,7 +382,7 @@ if uploaded_file:
             col_bau, col_site = st.columns(2)
             
             # [Adjusted] Y-Range: Focus on realistic data range + margin
-            y_min = -20; y_max = 60 # Adjusted for visibility of 10-50 range
+            y_min = -40; y_max = 100 
             
             # Define marker styles for Grayscale compatibility
             # F1: Circle, F2: Square, F3: Diamond, F4: Triangle-Up
