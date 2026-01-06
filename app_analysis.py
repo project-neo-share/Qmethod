@@ -590,7 +590,6 @@ if uploaded_file:
             st.markdown("---")
             st.markdown("#### Scenario Comparison (Sensitivity Check)")
             fig = go.Figure()
-            fig = plt.figure(figsize=(17, 7))
             ax1 = fig.add_subplot(121, projection="3d")
             zmin = min(Z_bau.min(), Z_site.min())
             zmax = max(Z_bau.max(), Z_site.max())
