@@ -510,15 +510,14 @@ if uploaded_file:
             Z_bau = np.zeros((len(tech_range), len(process_range)))
             Z_site = np.zeros((len(tech_range), len(process_range)))
             
-            
             for i, tech in enumerate(tech_range):
                 for j, proc in enumerate(process_range):
                     params = {"tech_max": float(tech), "process_max": float(proc), "place_max": 0.9, "people_max": 1.0}
                     # BAU sensitivity (allow tech/process maxima to vary via sensitivity_params)
-                    df_b = run_simulation(profiles, steps=24, scenario="BAU (Technocratic Push)", weights=weights, sensitivity_params=params)
+                    df_b = run_simulation(profiles, steps=24, scenario="BAU (Technocratic Push)", weights=custom_weights, sensitivity_params=params)
                     Z_bau[i, j] = df_b["Total Index"].mean()
                     # SITE sensitivity (same grid values but SITE governance baseline)
-                    df_s = run_simulation(profiles, steps=24, scenario="SITE Protocol (Socio-Technical)", weights=weights, sensitivity_params=params)
+                    df_s = run_simulation(profiles, steps=24, scenario="SITE Protocol (Socio-Technical)", weights=custom_weights, sensitivity_params=params)
                     Z_site[i, j] = df_s["Total Index"].mean()
 
             # Difference surface (SITE - BAU)
