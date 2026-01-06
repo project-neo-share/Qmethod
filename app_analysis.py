@@ -589,51 +589,94 @@ if uploaded_file:
             # --- Sensitivity Comparison Plot ---
             st.markdown("---")
             st.markdown("#### Scenario Comparison (Sensitivity Check)")
-            fig = go.Figure()
-            ax1 = fig.add_subplot(121, projection="3d")
+            
+            # 1. 공통 스케일 설정 (zmin, zmax)
             zmin = min(Z_bau.min(), Z_site.min())
             zmax = max(Z_bau.max(), Z_site.max())
             
-            surf1 = ax1.plot_surface(R, T, Z_bau, cmap=cm.plasma, edgecolor="none", vmin=zmin, vmax=zmax, alpha=0.9, antialiased=False)
-            ax1.set_xlabel("Process Input", labelpad=12)
-            ax1.set_ylabel("Tech Input", labelpad=12)
-            ax1.set_zlabel("Avg Acceptance Index", labelpad=10)
-            ax1.set_title("BAU: Avg Total Index")
-            ax1.set_zlim(zmin, zmax)
-            ax1.view_init(elev=28, azim=-55)
+            # 2. Subplots 생성 (1행 2열, 3D Scene 설정)
+            fig = make_subplots(
+                rows=1, cols=2,
+                specs=[[{'type': 'surface'}, {'type': 'surface'}]],
+                subplot_titles=("BAU: Avg Total Index", "SITE: Avg Total Index"),
+                horizontal_spacing=0.1
+            )
             
-            bau_max_idx = np.unravel_index(np.argmax(Z_bau), Z_bau.shape)
-            bau_min_idx = np.unravel_index(np.argmin(Z_bau), Z_bau.shape)
-            bau_max_x = process_range[bau_max_idx[1]]; bau_max_y = tech_range[bau_max_idx[0]]; bau_max_z = Z_bau[bau_max_idx]
-            bau_min_x = process_range[bau_min_idx[1]]; bau_min_y = tech_range[bau_min_idx[0]]; bau_min_z = Z_bau[bau_min_idx]
-            ax1.scatter([bau_max_x], [bau_max_y], [bau_max_z], color="yellow", s=80, edgecolor="k")
-            ax1.text(bau_max_x + 0.03, bau_max_y + 0.03, bau_max_z + (zmax - zmin)*0.5, f"BAU max: {bau_max_z:.2f}", color="black", fontsize=11, bbox=dict(facecolor="white", alpha=0.85, edgecolor="none"))
-            ax1.scatter([bau_min_x], [bau_min_y], [bau_min_z], color="cyan", s=80, edgecolor="k")
-            ax1.text(bau_min_x - 0.04, bau_min_y - 0.04, bau_min_z + (zmax - zmin)*0.4, f"BAU min: {bau_min_z:.2f}", color="black", fontsize=11, bbox=dict(facecolor="white", alpha=0.85, edgecolor="none"))
+            # 3. 데이터 및 마커 추가 함수 (반복 제거 및 가독성 향상)
+            def add_scenario_trace(fig, Z_data, row, col, name_prefix):
+                # (1) Surface Plot
+                fig.add_trace(
+                    go.Surface(
+                        x=R, y=T, z=Z_data,
+                        colorscale='Plasma',
+                        cmin=zmin, cmax=zmax,
+                        opacity=0.9,
+                        showscale=(col==2), # 두 번째 그래프에만 컬러바 표시
+                        colorbar=dict(title="Acceptance Index", x=1.02, len=0.6) if col==2 else None
+                    ),
+                    row=row, col=col
+                )
             
-            ax2 = fig.add_subplot(122, projection="3d")
-            surf2 = ax2.plot_surface(R, T, Z_site, cmap=cm.plasma, edgecolor="none", vmin=zmin, vmax=zmax, alpha=0.9, antialiased=False)
-            ax2.set_xlabel("Process Input", labelpad=12)
-            ax2.set_ylabel("Tech Input", labelpad=12)
-            ax2.set_zlabel("Avg Acceptance Index", labelpad=10)
-            ax2.set_title("SITE: Avg Total Index")
-            ax2.set_zlim(zmin, zmax)
-            ax2.view_init(elev=28, azim=-55)
+                # (2) Max/Min 포인트 계산
+                max_idx = np.unravel_index(np.argmax(Z_data), Z_data.shape)
+                min_idx = np.unravel_index(np.argmin(Z_data), Z_data.shape)
+                
+                # 좌표 추출
+                p_max = (process_range[max_idx[1]], tech_range[max_idx[0]], Z_data[max_idx]) # x, y, z
+                p_min = (process_range[min_idx[1]], tech_range[min_idx[0]], Z_data[min_idx])
+                
+                # (3) Max/Min 마커 및 텍스트 추가 (Scatter3d)
+                # Max Point
+                fig.add_trace(
+                    go.Scatter3d(
+                        x=[p_max[0]], y=[p_max[1]], z=[p_max[2]],
+                        mode='markers+text',
+                        marker=dict(size=5, color='yellow', line=dict(color='black', width=2)),
+                        text=[f"{name_prefix} max: {p_max[2]:.2f}"],
+                        textposition="top center",
+                        textfont=dict(color="black", size=11, family="Arial"),
+                        showlegend=False
+                    ),
+                    row=row, col=col
+                )
+                # Min Point
+                fig.add_trace(
+                    go.Scatter3d(
+                        x=[p_min[0]], y=[p_min[1]], z=[p_min[2]],
+                        mode='markers+text',
+                        marker=dict(size=5, color='cyan', line=dict(color='black', width=2)),
+                        text=[f"{name_prefix} min: {p_min[2]:.2f}"],
+                        textposition="bottom center",
+                        textfont=dict(color="black", size=11, family="Arial"),
+                        showlegend=False
+                    ),
+                    row=row, col=col
+                )
             
-            site_max_idx = np.unravel_index(np.argmax(Z_site), Z_site.shape)
-            site_min_idx = np.unravel_index(np.argmin(Z_site), Z_site.shape)
-            site_max_x = process_range[site_max_idx[1]]; site_max_y = tech_range[site_max_idx[0]]; site_max_z = Z_site[site_max_idx]
-            site_min_x = process_range[site_min_idx[1]]; site_min_y = tech_range[site_min_idx[0]]; site_min_z = Z_site[site_min_idx]
-            ax2.scatter([site_max_x], [site_max_y], [site_max_z], color="yellow", s=80, edgecolor="k")
-            ax2.text(site_max_x + 0.03, site_max_y + 0.03, site_max_z + (zmax - zmin)*0.08, f"SITE max: {site_max_z:.2f}", color="black", fontsize=11, bbox=dict(facecolor="white", alpha=0.85, edgecolor="none"))
-            ax2.scatter([site_min_x], [site_min_y], [site_min_z], color="cyan", s=80, edgecolor="k")
-            ax2.text(site_min_x - 0.04, site_min_y - 0.04, site_min_z + (zmax - zmin)*0.2, f"SITE min: {site_min_z:.2f}", color="black", fontsize=11, bbox=dict(facecolor="white", alpha=0.85, edgecolor="none"))
+            # 4. 실제 데이터 적용
+            add_scenario_trace(fig, Z_bau, 1, 1, "BAU")
+            add_scenario_trace(fig, Z_site, 1, 2, "SITE")
             
-            for ax in [ax1, ax2]:
-                ax.xaxis.pane.fill = False
-                ax.yaxis.pane.fill = False
-                ax.zaxis.pane.fill = False
-                ax.grid(False)
+            # 5. 레이아웃 및 카메라 시점 설정
+            # Matplotlib의 view_init(elev=28, azim=-55)와 유사한 시점(eye) 설정
+            camera_view = dict(eye=dict(x=1.6, y=-1.6, z=0.6))
+            
+            common_axis = dict(
+                xaxis_title="Process Input",
+                yaxis_title="Tech Input",
+                zaxis_title="Avg Acc Index",
+                zaxis=dict(range=[zmin, zmax])
+            )
+            
+            fig.update_layout(
+                title_text="",
+                height=600,
+                width=1200,
+                margin=dict(l=10, r=10, b=10, t=40),
+                scene=dict(**common_axis, camera=camera_view),  # 첫 번째 subplot
+                scene2=dict(**common_axis, camera=camera_view)  # 두 번째 subplot
+            )
+
             st.plotly_chart(fig, use_container_width=True)
             
     except Exception as e:
