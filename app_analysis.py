@@ -245,8 +245,8 @@ def calculate_agent_profiles(df):
         for cat, q_ids in TPPP_CATEGORIES.items():
             mask = df['Q_ID'].isin(q_ids)
             if mask.sum() > 0:
-                mean_z = df.loc[mask, f].mean()
-                agent_props[cat] = mean_z
+                median_z = df.loc[mask, f].median()
+                agent_props[cat] = median_z
             else:
                 agent_props[cat] = 0.0
         profiles[f] = agent_props
@@ -254,103 +254,137 @@ def calculate_agent_profiles(df):
 
 def run_simulation(profiles, steps=24, scenario="BAU", weights=None, sensitivity_params=None):
     history = []
-    
-    # Default parameters if not provided
+
+    # --- defaults ---
     if sensitivity_params is None:
         sensitivity_params = {
-            "tech_max": 0.8,
+            "tech_max": 1.2,
             "place_max": 0.9,
             "process_max": 1.2,
             "people_max": 1.0,
             "penalty": 1.5,
-            "synergy": 1.2
+            # unify synergy key: use synergy_coeff everywhere
+            "synergy_coeff": 0.8,
         }
+    else:
+        # --- (2) Synergy key unification / backward compatibility ---
+        if "synergy_coeff" not in sensitivity_params:
+            if "synergy_bonus" in sensitivity_params:
+                sensitivity_params["synergy_coeff"] = sensitivity_params["synergy_bonus"]
+            elif "synergy" in sensitivity_params:
+                sensitivity_params["synergy_coeff"] = sensitivity_params["synergy"]
+            else:
+                sensitivity_params["synergy_coeff"] = 0.8
 
-    # --- Scenario Input Definition (Advanced Logic) ---
-    if scenario == "BAU (Technocratic Push)":
-        # Tech: Increasing aggressively (Efficiency drive)
-        # Using sensitivity param to allow user override if they want to test extreme BAU
-        tech_max_bau = sensitivity_params.get("tech_max", 1.2) * 1.5 # BAU pushes tech harder by default
-        tech_in = np.linspace(0.5, tech_max_bau, steps)
-        
-        # Place: Low & Static
+    # --- weights default ---
+    if weights is None:
+        weights = {agent: 1.0 / len(profiles) for agent in profiles}
+    else:
+        # optional: normalize weights to sum to 1 for stability (safe default)
+        s = sum(weights.get(a, 0.0) for a in profiles)
+        if s > 0:
+            weights = {a: weights.get(a, 0.0) / s for a in profiles}
+        else:
+            weights = {agent: 1.0 / len(profiles) for agent in profiles}
+
+    # --- (1) Scenario normalization (aliases) ---
+    scenario_norm = str(scenario).strip()
+    scenario_alias = {
+        "BAU": "BAU (Technocratic Push)",
+        "bau": "BAU (Technocratic Push)",
+        "BAU (Technocratic Push)": "BAU (Technocratic Push)",
+        "SITE": "SITE Protocol (Socio-Technical)",
+        "site": "SITE Protocol (Socio-Technical)",
+        "SITE Protocol (Socio-Technical)": "SITE Protocol (Socio-Technical)",
+        "Sensitivity Test (Custom)": "Sensitivity Test (Custom)",
+    }
+    scenario_norm = scenario_alias.get(scenario_norm, scenario_norm)
+
+    def profile_curve(points):
+        t = np.linspace(0, 1, steps)
+        xp, fp = zip(*points)
+        return np.interp(t, xp, fp)
+
+    # --- Policy Inputs based on scenario ---
+    if scenario_norm == "BAU (Technocratic Push)":
+        tech_max = sensitivity_params.get("tech_max", 1.2)
+        process_floor = sensitivity_params.get("process_floor", 0.1)
+        people_floor = sensitivity_params.get("people_floor", 0.1)
+
+        tech_in = profile_curve([(0, 0.6), (1, tech_max)])
         place_in = np.full(steps, 0.2)
-        
-        # Process & People: Initial hope -> Disappointment (Crash)
-        # Justification: Initial PR creates hype (0.4), but lack of substance leads to erosion (0.1).
-        process_in = np.linspace(0.4, 0.1, steps)
-        people_in = np.linspace(0.4, 0.0, steps) 
-        
-    elif scenario == "SITE Protocol (Socio-Technical)":
-        # Tech: Moderate & Validated
-        tech_max_site = sensitivity_params.get("tech_max", 0.8)
-        tech_in = np.linspace(0.4, tech_max_site, steps)
-        
-        # Place: Increasing with Plateau (Incentive Negotiation -> Agreement)
-        place_max = sensitivity_params.get("place_max", 0.9)
-        plateau_start = int(steps * 0.7)
-        place_in = np.concatenate([
-            np.linspace(0.4, place_max, plateau_start),
-            np.full(steps - plateau_start, place_max)
-        ])
-        
-        # Process: High (Core driver)
-        process_max = sensitivity_params.get("process_max", 1.2)
-        process_in = np.linspace(0.5, process_max, steps) 
-        
-        # People: Trust builds up (Lagging indicator of Process)
-        people_max = sensitivity_params.get("people_max", 1.0)
-        people_in = np.linspace(0.4, people_max, steps)
-        
-    elif scenario == "Sensitivity Test (Custom)":
-        # Fully custom inputs from sliders
-        tech_in = np.linspace(0.4, sensitivity_params["tech_max"], steps)
-        place_in = np.linspace(0.4, sensitivity_params["place_max"], steps)
-        process_in = np.linspace(0.5, sensitivity_params["process_max"], steps)
-        people_in = np.linspace(0.4, sensitivity_params["people_max"], steps)
+        process_in = profile_curve([(0, 0.4), (0.4, 0.25), (1, process_floor)])
+        people_in = profile_curve([(0, 0.4), (0.4, 0.2), (1, people_floor)])
 
-    # --- Simulation Loop ---
+    elif scenario_norm == "SITE Protocol (Socio-Technical)":
+        tech_max = sensitivity_params.get("tech_max", 0.85)
+        place_max = sensitivity_params.get("place_max", 0.9)
+        place_mid = max(0.5, place_max * 0.65)
+        process_start = sensitivity_params.get("process_start", 0.7)
+        process_mid = sensitivity_params.get("process_mid", 0.8)
+        process_end = sensitivity_params.get("process_end", 0.75)
+        people_peak = sensitivity_params.get("people_max", 1.0)
+
+        tech_in = profile_curve([(0, 0.45), (1, tech_max)])
+        process_in = profile_curve([(0, process_start), (0.4, process_mid), (1, process_end)])
+        place_in = profile_curve([(0, 0.3), (0.6, place_mid), (1, place_max)])
+        people_in = profile_curve([(0, 0.30), (0.6, 0.35), (0.8, 0.6), (1, people_peak)])
+
+    elif scenario_norm == "Sensitivity Test (Custom)":
+        tech_in = np.linspace(0.4, sensitivity_params.get("tech_max", 0.8), steps)
+        place_in = np.linspace(0.4, sensitivity_params.get("place_max", 0.9), steps)
+        process_in = np.linspace(0.5, sensitivity_params.get("process_max", 1.2), steps)
+        people_in = np.linspace(0.4, sensitivity_params.get("people_max", 1.0), steps)
+
+    else:
+        # default fallback
+        tech_in = np.linspace(0.4, sensitivity_params.get("tech_max", 0.8), steps)
+        place_in = np.linspace(0.4, sensitivity_params.get("place_max", 0.9), steps)
+        process_in = np.linspace(0.5, sensitivity_params.get("process_max", 1.2), steps)
+        people_in = np.linspace(0.4, sensitivity_params.get("people_max", 1.0), steps)
+
+    synergy_coeff = sensitivity_params.get("synergy_coeff", 0.8)
+    penalty_factor = sensitivity_params.get("penalty", 1.5)
+
     for t in range(steps):
         row = {"Step": t}
-        total_acc = 0
-        
-        for agent, sens in profiles.items():
-            # 1. Tech Effect
-            tech_eff = tech_in[t] * sens.get("Technology", 0)
-            
-            # 2. Place Effect
-            place_eff = place_in[t] * sens.get("Place", 0)
-            
-            # 3. Process/People (Synergy Bonus Logic)
-            process_val = process_in[t]
-            synergy_factor = 1.0
-            
-            if process_val > 0.6:
-                synergy_factor = sensitivity_params.get("synergy", 1.2)
-            
-            process_eff = process_val * sens.get("Process", 0) * synergy_factor
-            people_eff = people_in[t] * sens.get("People", 0) * synergy_factor
-            
-            # 4. Interaction (Distrust Penalty Logic)
-            # If Trust(People) is low AND Tech push is high -> Backfire
-            penalty_factor = 1.0
-            if people_in[t] < 0.3 and tech_in[t] > 0.8:
-                penalty_factor = sensitivity_params.get("penalty", 1.5)
-                # Apply penalty to resistance components (negative scores)
-                if tech_eff < 0: tech_eff *= penalty_factor
-                if place_eff < 0: place_eff *= penalty_factor
+        total_acc = 0.0
 
-            # Sum & Normalize (Scaling 0.5 for realistic range)
-            raw_score = tech_eff + place_eff + process_eff + people_eff
-            acceptance = np.tanh(raw_score * 0.5) * 100
-            
+        tech_val = tech_in[t]
+        place_val = place_in[t]
+        process_val = process_in[t]
+        people_val = people_in[t]
+
+        interaction = max(process_val * people_val, 0.0)
+
+        synergy_bonus = 0.0
+        if process_val > 0.6:
+            synergy_bonus = synergy_coeff * (process_val - 0.6 + 0.5 * people_val)
+
+        for agent, sens in profiles.items():
+            tech_eff = tech_val * sens.get("Technology", 0.0) * max(interaction, 0.15)
+            place_eff = place_val * sens.get("Place", 0.0)
+            process_eff = process_val * sens.get("Process", 0.0) * (1.0 + synergy_bonus)
+            people_eff = people_val * sens.get("People", 0.0) * (1.0 + synergy_bonus)
+
+            # --- (3) Penalty redesign: remove double scaling ---
+            # Only adjust tech_eff (as intent suggests), and DO NOT multiply full score by penalty_factor.
+            if interaction < 0.25 and tech_val > 0.8:
+                if tech_eff > 0:
+                    tech_eff = tech_eff / penalty_factor
+                elif tech_eff < 0:
+                    tech_eff = tech_eff * penalty_factor
+
+            raw_score = (tech_eff + place_eff + process_eff + people_eff)
+            acceptance = np.tanh(raw_score) * 100.0
+
             row[agent] = acceptance
-            total_acc += acceptance * weights.get(agent, 0.25)
-            
+            total_acc += acceptance * weights.get(agent, 1.0 / len(profiles))
+
         row["Total Index"] = total_acc
         history.append(row)
-    return pd.DataFrame(history)
 
+    return pd.DataFrame(history)
 # ==========================================
 # 3. UI
 # ==========================================
@@ -470,7 +504,27 @@ if uploaded_file:
                 st.dataframe(sens_df.style.background_gradient(cmap="RdBu", vmin=-1, vmax=1).format("{:.2f}"))
 
             sim_steps = st.slider("Simulation Duration (Months)", 12, 60, 24)
+            tech_range = np.linspace(0.5, 1.2, 30)
+            process_range = np.linspace(0.5, 1.5, 30)
             
+            Z_bau = np.zeros((len(tech_range), len(process_range)))
+            Z_site = np.zeros((len(tech_range), len(process_range)))
+            
+            
+            for i, tech in enumerate(tech_range):
+                for j, proc in enumerate(process_range):
+                    params = {"tech_max": float(tech), "process_max": float(proc), "place_max": 0.9, "people_max": 1.0}
+                    # BAU sensitivity (allow tech/process maxima to vary via sensitivity_params)
+                    df_b = run_simulation(profiles, steps=24, scenario="BAU (Technocratic Push)", weights=weights, sensitivity_params=params)
+                    Z_bau[i, j] = df_b["Total Index"].mean()
+                    # SITE sensitivity (same grid values but SITE governance baseline)
+                    df_s = run_simulation(profiles, steps=24, scenario="SITE Protocol (Socio-Technical)", weights=weights, sensitivity_params=params)
+                    Z_site[i, j] = df_s["Total Index"].mean()
+
+            # Difference surface (SITE - BAU)
+            Z_diff = Z_site - Z_bau
+            
+            T, R = np.meshgrid(process_range, tech_range)
             # Run Scenarios
             df_bau = run_simulation(profiles, steps=sim_steps, scenario="BAU (Technocratic Push)", weights=custom_weights, sensitivity_params=sens_params)
             df_site = run_simulation(profiles, steps=sim_steps, scenario="SITE Protocol (Socio-Technical)", weights=custom_weights, sensitivity_params=sens_params)
@@ -536,12 +590,53 @@ if uploaded_file:
             # --- Sensitivity Comparison Plot ---
             st.markdown("---")
             st.markdown("#### Scenario Comparison (Sensitivity Check)")
-            fig_sens = go.Figure()
-            fig_sens.add_trace(go.Scatter(x=df_bau["Step"], y=df_bau["Total Index"], name="BAU", line=dict(color='red', width=2)))
-            fig_sens.add_trace(go.Scatter(x=df_site["Step"], y=df_site["Total Index"], name="SITE", line=dict(color='blue', width=2)))
-            fig_sens.add_trace(go.Scatter(x=df_custom["Step"], y=df_custom["Total Index"], name="Custom", line=dict(color='green', dash='dash', width=2)))
-            fig_sens.update_layout(yaxis_range=[y_min, y_max], template="plotly_white", title="Scenario Impact Comparison")
-            st.plotly_chart(fig_sens, use_container_width=True)
+            fig = go.Figure()
+            fig = plt.figure(figsize=(17, 7))
+            ax1 = fig.add_subplot(121, projection="3d")
+            zmin = min(Z_bau.min(), Z_site.min())
+            zmax = max(Z_bau.max(), Z_site.max())
+            
+            surf1 = ax1.plot_surface(R, T, Z_bau, cmap=cm.plasma, edgecolor="none", vmin=zmin, vmax=zmax, alpha=0.9, antialiased=False)
+            ax1.set_xlabel("Process Input", labelpad=12)
+            ax1.set_ylabel("Tech Input", labelpad=12)
+            ax1.set_zlabel("Avg Acceptance Index", labelpad=10)
+            ax1.set_title("BAU: Avg Total Index")
+            ax1.set_zlim(zmin, zmax)
+            ax1.view_init(elev=28, azim=-55)
+            
+            bau_max_idx = np.unravel_index(np.argmax(Z_bau), Z_bau.shape)
+            bau_min_idx = np.unravel_index(np.argmin(Z_bau), Z_bau.shape)
+            bau_max_x = process_range[bau_max_idx[1]]; bau_max_y = tech_range[bau_max_idx[0]]; bau_max_z = Z_bau[bau_max_idx]
+            bau_min_x = process_range[bau_min_idx[1]]; bau_min_y = tech_range[bau_min_idx[0]]; bau_min_z = Z_bau[bau_min_idx]
+            ax1.scatter([bau_max_x], [bau_max_y], [bau_max_z], color="yellow", s=80, edgecolor="k")
+            ax1.text(bau_max_x + 0.03, bau_max_y + 0.03, bau_max_z + (zmax - zmin)*0.5, f"BAU max: {bau_max_z:.2f}", color="black", fontsize=11, bbox=dict(facecolor="white", alpha=0.85, edgecolor="none"))
+            ax1.scatter([bau_min_x], [bau_min_y], [bau_min_z], color="cyan", s=80, edgecolor="k")
+            ax1.text(bau_min_x - 0.04, bau_min_y - 0.04, bau_min_z + (zmax - zmin)*0.4, f"BAU min: {bau_min_z:.2f}", color="black", fontsize=11, bbox=dict(facecolor="white", alpha=0.85, edgecolor="none"))
+            
+            ax2 = fig.add_subplot(122, projection="3d")
+            surf2 = ax2.plot_surface(R, T, Z_site, cmap=cm.plasma, edgecolor="none", vmin=zmin, vmax=zmax, alpha=0.9, antialiased=False)
+            ax2.set_xlabel("Process Input", labelpad=12)
+            ax2.set_ylabel("Tech Input", labelpad=12)
+            ax2.set_zlabel("Avg Acceptance Index", labelpad=10)
+            ax2.set_title("SITE: Avg Total Index")
+            ax2.set_zlim(zmin, zmax)
+            ax2.view_init(elev=28, azim=-55)
+            
+            site_max_idx = np.unravel_index(np.argmax(Z_site), Z_site.shape)
+            site_min_idx = np.unravel_index(np.argmin(Z_site), Z_site.shape)
+            site_max_x = process_range[site_max_idx[1]]; site_max_y = tech_range[site_max_idx[0]]; site_max_z = Z_site[site_max_idx]
+            site_min_x = process_range[site_min_idx[1]]; site_min_y = tech_range[site_min_idx[0]]; site_min_z = Z_site[site_min_idx]
+            ax2.scatter([site_max_x], [site_max_y], [site_max_z], color="yellow", s=80, edgecolor="k")
+            ax2.text(site_max_x + 0.03, site_max_y + 0.03, site_max_z + (zmax - zmin)*0.08, f"SITE max: {site_max_z:.2f}", color="black", fontsize=11, bbox=dict(facecolor="white", alpha=0.85, edgecolor="none"))
+            ax2.scatter([site_min_x], [site_min_y], [site_min_z], color="cyan", s=80, edgecolor="k")
+            ax2.text(site_min_x - 0.04, site_min_y - 0.04, site_min_z + (zmax - zmin)*0.2, f"SITE min: {site_min_z:.2f}", color="black", fontsize=11, bbox=dict(facecolor="white", alpha=0.85, edgecolor="none"))
+            
+            for ax in [ax1, ax2]:
+                ax.xaxis.pane.fill = False
+                ax.yaxis.pane.fill = False
+                ax.zaxis.pane.fill = False
+                ax.grid(False)
+            st.plotly_chart(fig, use_container_width=True)
             
     except Exception as e:
         st.error(f"Error processing file: {e}")
