@@ -3,7 +3,7 @@
 Final Q-Methodology Analysis (Fixed 4 Factors + System Dynamics)
 - Purpose: Generate final report data for Nature Energy submission.
 - Update: 
-  - [NEW] Tab 4: Added Respondent Type Assignment & Weight Calculation Table.
+  - [FIX] Fixed numpy string concatenation error in Tab 4 (Percentage calculation).
 """
 
 import io
@@ -426,7 +426,7 @@ if uploaded_file:
         with tab4:
             st.subheader("Respondent Assignments & Population Weights")
             
-            # [MODIFIED SECTION START] ---------------------------
+            # [FIXED SECTION START] ---------------------------
             # 1. Prepare Loading Dataframe
             loadings_df = pd.DataFrame(engine.loadings, columns=["F1", "F2", "F3", "F4"])
             
@@ -443,11 +443,16 @@ if uploaded_file:
             summary_stats = loadings_df["Assigned Type"].value_counts().sort_index()
             total_respondents = len(loadings_df)
             
+            # Use list comprehension for safe string formatting (Avoids ufunc error)
+            counts = summary_stats.values
+            weights = counts / total_respondents
+            pct_strings = [f"{w*100:.1f}%" for w in weights]
+            
             summary_df = pd.DataFrame({
                 "Assigned Type": summary_stats.index,
-                "Count": summary_stats.values,
-                "Calculated Weight": (summary_stats.values / total_respondents),
-                "Percentage": ((summary_stats.values / total_respondents) * 100).round(1).astype(str) + "%"
+                "Count": counts,
+                "Calculated Weight": weights,
+                "Percentage": pct_strings
             })
             
             # Extract weights dictionary for simulation usage
@@ -464,7 +469,7 @@ if uploaded_file:
             with col_detail:
                 st.markdown("#### 👤 Individual Respondent Assignments")
                 st.dataframe(loadings_df.style.background_gradient(cmap="Blues", subset=["F1","F2","F3","F4"]))
-            # [MODIFIED SECTION END] -----------------------------
+            # [FIXED SECTION END] -----------------------------
 
         with tab5:
             st.subheader("Counterfactual Simulation (SITE Protocol)")
