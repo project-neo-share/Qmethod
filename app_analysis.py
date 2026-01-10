@@ -331,4 +331,350 @@ def run_simulation(profiles, steps=24, scenario="BAU", weights=None, sensitivity
         row = {"Step": t}
         total_acc = 0.0
 
-        tech_val = tech_in
+        tech_val = tech_in[t]
+        place_val = place_in[t]
+        process_val = process_in[t]
+        people_val = people_in[t]
+
+        interaction = max(process_val * people_val, 0.0)
+
+        synergy_bonus = 0.0
+        if process_val > 0.6:
+            synergy_bonus = synergy_coeff * (process_val - 0.6 + 0.5 * people_val)
+
+        for agent, sens in profiles.items():
+            tech_eff = tech_val * sens.get("Technology", 0.0) * max(interaction, 0.15)
+            place_eff = place_val * sens.get("Place", 0.0)
+            process_eff = process_val * sens.get("Process", 0.0) * (1.0 + synergy_bonus)
+            people_eff = people_val * sens.get("People", 0.0) * (1.0 + synergy_bonus)
+
+            if interaction < 0.25 and tech_val > 0.8:
+                if tech_eff > 0:
+                    tech_eff = tech_eff / penalty_factor
+                elif tech_eff < 0:
+                    tech_eff = tech_eff * penalty_factor
+
+            raw_score = (tech_eff + place_eff + process_eff + people_eff)
+            acceptance = np.tanh(raw_score) * 100.0
+
+            row[agent] = acceptance
+            total_acc += acceptance * weights.get(agent, 1.0 / len(profiles))
+
+        row["Total Index"] = total_acc
+        history.append(row)
+
+    return pd.DataFrame(history)
+
+# ==========================================
+# 3. UI
+# ==========================================
+st.title("📊 Final Q-Analysis: System Dynamics")
+st.caption("Focus: Fixed 4 Factors & TPPP Feedback Loops for Nature Energy")
+
+uploaded_file = st.sidebar.file_uploader("Upload Final CSV", type=['csv'])
+
+if uploaded_file:
+    try:
+        df_raw = pd.read_csv(uploaded_file)
+        q_cols = [c for c in df_raw.columns if c.startswith('Q') and c[1:].isdigit() and int(c[1:]) <= 24]
+        
+        if len(q_cols) < 5:
+            st.error("Invalid Data: Columns Q01-Q24 not found.")
+            st.stop()
+
+        # Run Engine
+        engine = QEngine(df_raw[q_cols], n_factors=4).fit()
+        
+        # Calculate Systemic Correlations (Raw Data Level)
+        tppp_scores = calculate_tppp_scores(df_raw[q_cols], TPPP_CATEGORIES)
+        corr_matrix = tppp_scores.corr(method='spearman')
+        
+        tab1, tab2, tab3, tab4, tab5 = st.tabs(["1. Typology (Factor Arrays)", "2. Structural Profile (Radar)", "3. Systemic Loops (Triads)", "4. Respondent Loading & Weights", "5. SITE Simulation"])
+        
+        with tab1:
+            st.subheader("Factor Arrays: The 4 Perspectives")
+            fa_df = pd.DataFrame(engine.factor_arrays, index=q_cols, columns=["F1", "F2", "F3", "F4"])
+            fa_df.insert(0, "Category", [Q_TO_TPPP.get(idx) for idx in fa_df.index])
+            fa_df.insert(1, "Statement", [Q_MAP.get(idx) for idx in fa_df.index])
+            st.dataframe(fa_df.style.background_gradient(cmap="RdBu_r", subset=["F1","F2","F3","F4"], vmin=-1.5, vmax=1.5))
+            st.download_button("Download Array CSV", fa_df.to_csv().encode('utf-8-sig'), "factor_arrays_final.csv", "text/csv")
+
+        with tab2:
+            st.subheader("TPPP Structural Perception")
+            tppp_profile = calculate_type_tppp_profile(engine.factor_arrays, q_cols, TPPP_CATEGORIES)
+            fig = go.Figure()
+            categories = list(tppp_profile.index)
+            for col in tppp_profile.columns:
+                fig.add_trace(go.Scatterpolar(r=tppp_profile[col], theta=categories, fill='toself', name=col))
+            fig.update_layout(polar=dict(radialaxis=dict(visible=True, range=[-1.5, 1.5])), title="TPPP Radar Chart")
+            c1, c2 = st.columns([2,1])
+            with c1: st.plotly_chart(fig, use_container_width=True)
+            with c2: st.dataframe(tppp_profile.style.background_gradient(cmap="RdBu_r", vmin=-1, vmax=1).format("{:.3f}"))
+
+        with tab3:
+            st.subheader("Systemic Feedback Loops (Triad Analysis)")
+            c1, c2 = st.columns([1, 1.5])
+            with c1:
+                threshold = st.slider("Correlation Threshold (|r| > )", 0.0, 0.8, 0.25, 0.05)
+                st.markdown("#### Correlation Matrix (Spearman)")
+                st.dataframe(corr_matrix.style.background_gradient(cmap="coolwarm", vmin=-1, vmax=1).format("{:.2f}"))
+            with c2:
+                st.markdown("#### Systemic Network Graph")
+                fig_net = create_system_network(corr_matrix, threshold)
+                st.plotly_chart(fig_net, use_container_width=True)
+
+        with tab4:
+            st.subheader("Respondent Assignments & Population Weights")
+            
+            # [MODIFIED SECTION START] ---------------------------
+            # 1. Prepare Loading Dataframe
+            loadings_df = pd.DataFrame(engine.loadings, columns=["F1", "F2", "F3", "F4"])
+            
+            # 2. Determine Assigned Type based on Max Absolute Loading
+            factor_cols = ["F1", "F2", "F3", "F4"]
+            loadings_df["Assigned Type"] = loadings_df[factor_cols].abs().idxmax(axis=1)
+            
+            # 3. Concatenate with Metadata
+            meta_cols = [c for c in df_raw.columns if c not in q_cols]
+            if meta_cols:
+                loadings_df = pd.concat([df_raw[meta_cols].reset_index(drop=True), loadings_df], axis=1)
+            
+            # 4. Create Summary Table (Weights)
+            summary_stats = loadings_df["Assigned Type"].value_counts().sort_index()
+            total_respondents = len(loadings_df)
+            
+            summary_df = pd.DataFrame({
+                "Assigned Type": summary_stats.index,
+                "Count": summary_stats.values,
+                "Calculated Weight": (summary_stats.values / total_respondents),
+                "Percentage": ((summary_stats.values / total_respondents) * 100).round(1).astype(str) + "%"
+            })
+            
+            # Extract weights dictionary for simulation usage
+            calc_weights = dict(zip(summary_df["Assigned Type"], summary_df["Calculated Weight"]))
+
+            # Layout: Left (Summary), Right (Details)
+            col_summ, col_detail = st.columns([1, 2])
+            
+            with col_summ:
+                st.markdown("#### 📋 Weight Distribution Table")
+                st.dataframe(summary_df.style.background_gradient(subset=["Count"], cmap="Greens"))
+                st.info(f"Total Respondents: {total_respondents}")
+                
+            with col_detail:
+                st.markdown("#### 👤 Individual Respondent Assignments")
+                st.dataframe(loadings_df.style.background_gradient(cmap="Blues", subset=["F1","F2","F3","F4"]))
+            # [MODIFIED SECTION END] -----------------------------
+
+        with tab5:
+            st.subheader("Counterfactual Simulation (SITE Protocol)")
+            st.caption("Validating SITE efficacy using empirical Q-profiles.")
+            
+            # Prepare Profiles
+            profiles = calculate_agent_profiles(fa_df.rename(columns={"Statement": "Statement", "Category": "Category"})) 
+            fa_df_sim = fa_df.copy()
+            fa_df_sim['Q_ID'] = fa_df_sim.index 
+            profiles = calculate_agent_profiles(fa_df_sim)
+            
+            # Weight Configuration (Editable)
+            with st.expander("⚙️ Configure Agent Weights & Parameters"):
+                st.markdown("**1. Agent Weights (Population Share)**")
+                c_w1, c_w2, c_w3, c_w4 = st.columns(4)
+                # Use calculated weights as default
+                w_f1 = c_w1.number_input("F1 Weight", 0.0, 1.0, calc_weights.get("F1", 0.25))
+                w_f2 = c_w2.number_input("F2 Weight", 0.0, 1.0, calc_weights.get("F2", 0.25))
+                w_f3 = c_w3.number_input("F3 Weight", 0.0, 1.0, calc_weights.get("F3", 0.25))
+                w_f4 = c_w4.number_input("F4 Weight", 0.0, 1.0, calc_weights.get("F4", 0.25))
+                custom_weights = {"F1": w_f1, "F2": w_f2, "F3": w_f3, "F4": w_f4}
+                
+                st.markdown("**2. Sensitivity Parameters (Global)**")
+                c_p1, c_p2, c_p3 = st.columns(3)
+                sens_penalty = c_p1.slider("Distrust Penalty", 1.0, 3.0, 1.5, 0.1, help="Resistance multiplier when trust is low")
+                sens_synergy = c_p2.slider("Governance Synergy", 1.0, 2.0, 1.2, 0.1, help="Bonus multiplier when process is high")
+                sens_people_max = c_p3.slider("People Max Input", 0.5, 1.5, 1.0, 0.1, help="Max trust level in SITE scenario")
+                
+                # Parameters for Custom Sensitivity Test
+                st.markdown("**3. Custom Scenario Limits**")
+                c_c1, c_c2, c_c3 = st.columns(3)
+                sens_tech = c_c1.slider("Max Tech Input", 0.5, 1.5, 0.8, 0.1)
+                sens_place = c_c2.slider("Max Place Input", 0.5, 1.5, 0.9, 0.1)
+                sens_process = c_c3.slider("Max Process Input", 0.5, 1.5, 1.2, 0.1)
+
+                sens_params = {
+                    "tech_max": sens_tech, "place_max": sens_place, 
+                    "process_max": sens_process, "people_max": sens_people_max, 
+                    "penalty": sens_penalty, "synergy": sens_synergy
+                }
+                
+                st.markdown("##### Agent Sensitivities (Initial Parameters)")
+                sens_df = pd.DataFrame(profiles).T
+                st.dataframe(sens_df.style.background_gradient(cmap="RdBu", vmin=-1, vmax=1).format("{:.2f}"))
+
+            sim_steps = st.slider("Simulation Duration (Months)", 12, 60, 24)
+            tech_range = np.linspace(0.5, 1.2, 30)
+            process_range = np.linspace(0.5, 1.5, 30)
+            
+            Z_bau = np.zeros((len(tech_range), len(process_range)))
+            Z_site = np.zeros((len(tech_range), len(process_range)))
+            
+            for i, tech in enumerate(tech_range):
+                for j, proc in enumerate(process_range):
+                    params = {"tech_max": float(tech), "process_max": float(proc), "place_max": 0.9, "people_max": 1.0}
+                    # BAU sensitivity (allow tech/process maxima to vary via sensitivity_params)
+                    df_b = run_simulation(profiles, steps=24, scenario="BAU (Technocratic Push)", weights=custom_weights, sensitivity_params=params)
+                    Z_bau[i, j] = df_b["Total Index"].mean()
+                    # SITE sensitivity (same grid values but SITE governance baseline)
+                    df_s = run_simulation(profiles, steps=24, scenario="SITE Protocol (Socio-Technical)", weights=custom_weights, sensitivity_params=params)
+                    Z_site[i, j] = df_s["Total Index"].mean()
+
+            # Difference surface (SITE - BAU)
+            Z_diff = Z_site - Z_bau
+            
+            T, R = np.meshgrid(process_range, tech_range)
+            # Run Scenarios
+            df_bau = run_simulation(profiles, steps=sim_steps, scenario="BAU (Technocratic Push)", weights=custom_weights, sensitivity_params=sens_params)
+            df_site = run_simulation(profiles, steps=sim_steps, scenario="SITE Protocol (Socio-Technical)", weights=custom_weights, sensitivity_params=sens_params)
+            df_custom = run_simulation(profiles, steps=sim_steps, scenario="Sensitivity Test (Custom)", weights=custom_weights, sensitivity_params=sens_params)
+
+            # Visualization: 2-Column Layout
+            col_bau, col_site = st.columns(2)
+            
+            # [Adjusted] Y-Range: Focus on realistic data range + margin
+            y_min = -30; y_max = 80 
+            
+            # Define marker styles for Grayscale compatibility
+            # F1: Circle, F2: Square, F3: Diamond, F4: Triangle-Up
+            markers = {"F1": "circle", "F2": "square", "F3": "diamond", "F4": "triangle-up"}
+            dash_styles = {"F1": "dot", "F2": "dot", "F3": "dot", "F4": "dot"} # Dotted for agents
+            
+            # --- BAU Plot ---
+            with col_bau:
+                fig_bau = go.Figure()
+                # Agents (Grayscale)
+                for agent in ["F1", "F2", "F3", "F4"]:
+                    fig_bau.add_trace(go.Scatter(
+                        x=df_bau["Step"], y=df_bau[agent], name=agent,
+                        mode='lines+markers',
+                        line=dict(color='gray', width=1, dash=dash_styles[agent]),
+                        marker=dict(symbol=markers[agent], size=6, color='black'),
+                        opacity=0.6
+                    ))
+                # Total Index (Red Solid)
+                fig_bau.add_trace(go.Scatter(
+                    x=df_bau["Step"], y=df_bau["Total Index"], name="Total (BAU)",
+                    mode='lines',
+                    line=dict(color='#E63946', width=4)
+                ))
+                fig_bau.add_hline(y=0, line_dash="dash", line_color="black")
+                fig_bau.update_layout(title="(A) BAU Scenario (Deadlock)", yaxis_range=[y_min, y_max], template="plotly_white", showlegend=False)
+                st.plotly_chart(fig_bau, use_container_width=True)
+
+            # --- SITE Plot ---
+            with col_site:
+                fig_site = go.Figure()
+                # Agents (Grayscale)
+                for agent in ["F1", "F2", "F3", "F4"]:
+                    fig_site.add_trace(go.Scatter(
+                        x=df_site["Step"], y=df_site[agent], name=agent,
+                        mode='lines+markers',
+                        line=dict(color='gray', width=1, dash=dash_styles[agent]),
+                        marker=dict(symbol=markers[agent], size=6, color='black'),
+                        opacity=0.6
+                    ))
+                # Total Index (Blue Solid)
+                fig_site.add_trace(go.Scatter(
+                    x=df_site["Step"], y=df_site["Total Index"], name="Total (SITE)",
+                    mode='lines',
+                    line=dict(color='#457B9D', width=4)
+                ))
+                fig_site.add_hline(y=0, line_dash="dash", line_color="black")
+                fig_site.update_layout(title="(B) SITE Protocol (Consensus)", yaxis_range=[y_min, y_max], template="plotly_white", showlegend=True)
+                st.plotly_chart(fig_site, use_container_width=True)
+            
+            st.success("The visual contrast between Red (BAU) and Blue (SITE) lines, along with distinct agent markers, highlights the structural shift from conflict to consensus.")
+            
+            # --- Sensitivity Comparison Plot ---
+            st.markdown("---")
+            st.markdown("#### Scenario Comparison (Sensitivity Check)")
+            
+            zmin = min(Z_bau.min(), Z_site.min())
+            zmax = max(Z_bau.max(), Z_site.max())
+            
+            fig = make_subplots(
+                rows=1, cols=2,
+                specs=[[{'type': 'surface'}, {'type': 'surface'}]],
+                subplot_titles=("BAU: Avg Total Index", "SITE: Avg Total Index"),
+                horizontal_spacing=0.1
+            )
+            
+            def add_scenario_trace(fig, Z_data, row, col, name_prefix):
+                fig.add_trace(
+                    go.Surface(
+                        x=R, y=T, z=Z_data,
+                        colorscale='Plasma',
+                        cmin=zmin, cmax=zmax,
+                        opacity=0.9,
+                        showscale=(col==2),
+                        colorbar=dict(title="Acceptance Index", x=1.02, len=0.6) if col==2 else None
+                    ),
+                    row=row, col=col
+                )
+                
+                max_idx = np.unravel_index(np.argmax(Z_data), Z_data.shape)
+                min_idx = np.unravel_index(np.argmin(Z_data), Z_data.shape)
+                
+                p_max = (process_range[max_idx[1]], tech_range[max_idx[0]], Z_data[max_idx]) # x, y, z
+                p_min = (process_range[min_idx[1]], tech_range[min_idx[0]], Z_data[min_idx])
+                
+                fig.add_trace(
+                    go.Scatter3d(
+                        x=[p_max[0]], y=[p_max[1]], z=[p_max[2]],
+                        mode='markers+text',
+                        marker=dict(size=5, color='yellow', line=dict(color='black', width=2)),
+                        text=[f"{name_prefix} max: {p_max[2]:.2f}"],
+                        textposition="top center",
+                        textfont=dict(color="black", size=11, family="Arial"),
+                        showlegend=False
+                    ),
+                    row=row, col=col
+                )
+                fig.add_trace(
+                    go.Scatter3d(
+                        x=[p_min[0]], y=[p_min[1]], z=[p_min[2]],
+                        mode='markers+text',
+                        marker=dict(size=5, color='cyan', line=dict(color='black', width=2)),
+                        text=[f"{name_prefix} min: {p_min[2]:.2f}"],
+                        textposition="bottom center",
+                        textfont=dict(color="black", size=11, family="Arial"),
+                        showlegend=False
+                    ),
+                    row=row, col=col
+                )
+            
+            add_scenario_trace(fig, Z_bau, 1, 1, "BAU")
+            add_scenario_trace(fig, Z_site, 1, 2, "SITE")
+            
+            camera_view = dict(eye=dict(x=1.6, y=-1.6, z=0.6))
+            common_axis = dict(
+                xaxis_title="Process Input",
+                yaxis_title="Tech Input",
+                zaxis_title="Avg Acc Index",
+                zaxis=dict(range=[zmin, zmax])
+            )
+            
+            fig.update_layout(
+                title_text="",
+                height=600,
+                width=1200,
+                margin=dict(l=10, r=10, b=10, t=40),
+                scene=dict(**common_axis, camera=camera_view),
+                scene2=dict(**common_axis, camera=camera_view)
+            )
+
+            st.plotly_chart(fig, use_container_width=True)
+            
+    except Exception as e:
+        st.error(f"Error processing file: {e}")
+
+else:
+    st.info("Upload the CSV file to generate the final 4-factor report.")
