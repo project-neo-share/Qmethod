@@ -3,10 +3,10 @@
 Nature Energy submission app (Streamlit)
 Integrated Q-methodology (4 factors) + TPPP mapping + ABM/SD-informed simulations and sensitivity analyses.
 
-Author:
-  Prof. Dr. Songhee Kang (Tech University of Korea)
+Author: 
+  Prof. Dr. Songhee Kang, Tech University of Korea
 Run:
-  streamlit run ne-tppp-q-abm-analysis_streamlit.py
+  streamlit run ne-tppp-q-abm-analysis_streamlit_v3.py
 """
 
 import io
@@ -370,6 +370,7 @@ def boundary_curve_from_grid(df_grid, scenario, metric="mean"):
 # 5b) Supplementary plot helpers (S9, S10a, S10b)
 # =========================================================
 def _find_zero_cross_piecewise(x: np.ndarray, y: np.ndarray, target: float = 0.0):
+    """Piecewise-linear zero-cross within observed grid (no extrapolation)."""
     x = np.asarray(x, float)
     y = np.asarray(y, float)
     for i in range(1, len(x)):
@@ -380,8 +381,21 @@ def _find_zero_cross_piecewise(x: np.ndarray, y: np.ndarray, target: float = 0.0
     return None
 
 def make_s10a_slice_plot(df_grid: pd.DataFrame, tech_slice: float, tau_synergy: float):
+    """S10a: Representative slice (tech_max fixed). Mean acceptance vs Process (BAU vs SITE)."""
     bau = df_grid[(df_grid["scenario"]=="BAU") & (np.isclose(df_grid["tech_max"], tech_slice))].sort_values("process_max")
     site = df_grid[(df_grid["scenario"]=="SITE") & (np.isclose(df_grid["tech_max"], tech_slice))].sort_values("process_max")
+
+    if bau.empty or site.empty:
+        fig, ax = plt.subplots(figsize=(11, 6))
+        ax.axvline(tau_synergy, linestyle="--", linewidth=1)
+        ax.axhline(0, linestyle="--", linewidth=1)
+        ax.set_title(f"Representative slice (tech_max={tech_slice}). Mean acceptance vs Process")
+        ax.set_xlabel("Process input (normalized; observed grid range)")
+        ax.set_ylabel("Mean Total Acceptance Index")
+        ax.text(0.5, 0.5, "No data available for this tech_max slice.\nRun S10 grid search or adjust grid resolution.",
+                ha="center", va="center", transform=ax.transAxes)
+        fig.tight_layout()
+        return fig
 
     fig, ax = plt.subplots(figsize=(11, 6))
     ax.plot(bau["process_max"], bau["mean"], marker="o", linewidth=2.5, color="darkred", label="BAU (mean)")
@@ -423,6 +437,7 @@ def make_s10a_slice_plot(df_grid: pd.DataFrame, tech_slice: float, tau_synergy: 
     return fig
 
 def make_s10b_boundary_curve_plot(df_grid: pd.DataFrame):
+    """S10b: Boundary curves across tech_max (mean acceptance criterion)."""
     bau_bc = boundary_curve_from_grid(df_grid, "BAU", metric="mean")
     site_bc = boundary_curve_from_grid(df_grid, "SITE", metric="mean")
 
@@ -449,6 +464,7 @@ def run_s9_robustness_screening(
     tau_synergy: float,
     synergy_gain: float,
 ):
+    """S9: robustness screening over ω_i (Dirichlet around base_weights) and δ at fixed tech_max."""
     base = np.array([base_weights.get("F1", 0.25), base_weights.get("F2", 0.25), base_weights.get("F3", 0.25), base_weights.get("F4", 0.25)], float)
     base = base / base.sum()
     alpha = base * 30.0  # concentration around base
@@ -509,6 +525,7 @@ def run_s9_robustness_screening(
     return pd.DataFrame(rows)
 
 def make_s9_plot(df_s9: pd.DataFrame, tech_fixed: float):
+    """S9: clarified two-panel plot (boxplots + deadlock-like rate)."""
     deltas = np.array(sorted(df_s9["delta"].unique()))
     data_bau = [df_s9[df_s9["delta"] == d]["bau_mean_boundary"].dropna().values for d in deltas]
     data_site = [df_s9[df_s9["delta"] == d]["site_mean_boundary"].dropna().values for d in deltas]
@@ -533,7 +550,6 @@ def make_s9_plot(df_s9: pd.DataFrame, tech_fixed: float):
     ax.set_ylabel(f"Min Process for mean(A_total)>0\n(coarse screening; tech_max={tech_fixed})")
     ax.set_title("Supplementary S9: Robustness to ω_i and δ (BAU vs SITE boundaries)")
 
-    # manual legend proxies
     import matplotlib.patches as mpatches
     bau_patch = mpatches.Patch(facecolor="white", edgecolor="black", hatch="", label="BAU boundary (mean>0)")
     site_patch = mpatches.Patch(facecolor="white", edgecolor="black", hatch="///", label="SITE boundary (mean>0)")
@@ -698,9 +714,8 @@ with tab5:
 
     st.markdown("---")
     st.markdown("## Supplementary S10 (mean acceptance criterion)")
-    st.caption("S10a: representative slice at tech_max=1.2. S10b: boundary curves across technology intensity.")
+    st.caption("S10a: representative slice near tech_max=1.2 (auto-snaps to the closest available grid value). S10b: boundary curves across technology intensity.")
 
-    # Keep grid in session_state so S10 plots can render after running.
     if "df_grid" not in st.session_state:
         st.session_state["df_grid"] = None
 
@@ -724,15 +739,19 @@ with tab5:
     if st.session_state["df_grid"] is not None:
         df_grid = st.session_state["df_grid"]
 
-        # S10a (slice at tech=1.2)
-        fig_s10a = make_s10a_slice_plot(df_grid, tech_slice=1.2, tau_synergy=float(tau_synergy))
+        # S10a: Option B (auto-snap to closest tech_max)
+        # Choose the closest available tech_max to 1.2 (robust to grid resolution)
+        target_slice = 1.2
+        tech_slice = float(df_grid.loc[(df_grid["tech_max"] - target_slice).abs().idxmin(), "tech_max"])
+        if not np.isclose(tech_slice, target_slice):
+            st.info(f"S10a slice uses the closest available tech_max={tech_slice:.3f} (target was {target_slice}).")
+        fig_s10a = make_s10a_slice_plot(df_grid, tech_slice=tech_slice, tau_synergy=float(tau_synergy))
         st.pyplot(fig_s10a, use_container_width=True)
 
-        # S10b (boundary curves)
+        # S10b
         fig_s10b = make_s10b_boundary_curve_plot(df_grid)
         st.pyplot(fig_s10b, use_container_width=True)
 
-        # downloads
         st.download_button("Download S10 grid CSV", df_grid.to_csv(index=False).encode("utf-8-sig"), "S10_process_tech_grid.csv", "text/csv")
 
     st.markdown("---")
