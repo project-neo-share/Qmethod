@@ -2,8 +2,9 @@
 """
 Nature Energy submission app (Streamlit)
 Integrated Q-methodology (4 factors) + TPPP mapping + ABM/SD-informed simulations and sensitivity analyses.
-Author: 
-  Prof. Dr. Songhee Kang, Tech University of Korea
+
+Author:
+  Prof. Dr. Songhee Kang (Tech University of Korea)
 Run:
   streamlit run ne-tppp-q-abm-analysis_streamlit.py
 """
@@ -16,6 +17,7 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 import plotly.graph_objects as go
+import matplotlib.pyplot as plt
 from scipy.stats import spearmanr
 
 # =========================================================
@@ -273,10 +275,14 @@ def simulate_series(profiles: Dict[str, Dict[str, float]], weights: Dict[str, fl
         w = {a: float(weights.get(a, 0.0)/s) for a in profiles}
 
     if scenario == "BAU":
+        # BAU: technocratic push with declining People, but allow Process effort to vary via process_max
         tech_in = _interp_curve([(0, 0.6), (1, p.tech_max)], steps, gamma=1.0)
         place_in = np.full(steps, 0.2, dtype=float)
-        process_pts = _shift_points([(0, 0.4), (0.4, 0.25), (1, 0.1)], p.proc_shift)
+
+        # Process effort can be increased (e.g., administrative effort) while People decays
+        process_pts = _shift_points([(0, 0.4), (0.4, 0.6), (1, float(np.clip(p.process_max, 0.0, 1.5)))], p.proc_shift)
         people_pts  = _shift_points([(0, 0.4), (0.4, 0.2),  (1, 0.1)], p.proc_shift)
+
         process_in = _interp_curve(process_pts, steps, gamma=p.proc_gamma)
         people_in  = _interp_curve(people_pts,  steps, gamma=p.proc_gamma)
     else:
@@ -358,6 +364,199 @@ def boundary_curve_from_grid(df_grid, scenario, metric="mean"):
         ok = s[s[metric] > 0]
         out.append((float(t), np.nan if ok.empty else float(ok["process_max"].iloc[0])))
     return pd.DataFrame(out, columns=["tech_max", f"min_process_for_{metric}_gt0"])
+
+
+# =========================================================
+# 5b) Supplementary plot helpers (S9, S10a, S10b)
+# =========================================================
+def _find_zero_cross_piecewise(x: np.ndarray, y: np.ndarray, target: float = 0.0):
+    \"\"\"Piecewise-linear zero-cross within observed grid (no extrapolation).\"\"\"
+    x = np.asarray(x, float)
+    y = np.asarray(y, float)
+    for i in range(1, len(x)):
+        if (y[i-1] < target and y[i] >= target) or (y[i-1] > target and y[i] <= target):
+            if y[i] == y[i-1]:
+                return float(x[i])
+            return float(x[i-1] + (target - y[i-1]) * (x[i] - x[i-1]) / (y[i] - y[i-1]))
+    return None
+
+def make_s10a_slice_plot(df_grid: pd.DataFrame, tech_slice: float, tau_synergy: float):
+    \"\"\"S10a: Representative slice (tech_max fixed). Mean acceptance vs Process (BAU vs SITE).\"\"\"
+    bau = df_grid[(df_grid["scenario"]=="BAU") & (np.isclose(df_grid["tech_max"], tech_slice))].sort_values("process_max")
+    site = df_grid[(df_grid["scenario"]=="SITE") & (np.isclose(df_grid["tech_max"], tech_slice))].sort_values("process_max")
+
+    fig, ax = plt.subplots(figsize=(11, 6))
+    ax.plot(bau["process_max"], bau["mean"], marker="o", linewidth=2.5, color="darkred", label="BAU (mean)")
+    ax.plot(site["process_max"], site["mean"], marker="o", linewidth=2.5, color="darkblue", label="SITE (mean)")
+
+    ax.axhline(0, linestyle="--", linewidth=1)
+    ax.axvline(tau_synergy, linestyle="--", linewidth=1)
+    ax.text(tau_synergy + 0.01, ax.get_ylim()[1]*0.92, f"Synergy trigger (Process={tau_synergy:.2f})", va="top")
+
+    # BAU zero-cross (if present)
+    bau_cross = _find_zero_cross_piecewise(bau["process_max"].to_numpy(), bau["mean"].to_numpy(), 0.0)
+    if bau_cross is not None:
+        ax.scatter([bau_cross], [0], s=260, color="darkred", edgecolor="white", linewidth=0.8, zorder=5)
+        ax.annotate(
+            f"BAU mean zero-cross ≈ {bau_cross:.2f}",
+            xy=(bau_cross, 0),
+            xytext=(bau_cross + 0.06, 0.12*(ax.get_ylim()[1]-ax.get_ylim()[0])),
+            ha="left", va="bottom",
+            bbox=dict(boxstyle="round,pad=0.25", fc="white", ec="gray", alpha=0.9),
+            arrowprops=dict(arrowstyle="->", lw=0.8, color="gray")
+        )
+
+    # SITE note if always positive across observed grid
+    if len(site) > 0 and float(site["mean"].min()) > 0:
+        ax.annotate(
+            "SITE mean > 0 across observed Process grid\n(boundary lies below min grid)",
+            xy=(float(site["process_max"].iloc[0]), float(site["mean"].iloc[0])),
+            xytext=(float(site["process_max"].iloc[0]) + 0.08, float(site["mean"].iloc[0]) + 0.15*(ax.get_ylim()[1]-ax.get_ylim()[0])),
+            ha="left", va="bottom",
+            bbox=dict(boxstyle="round,pad=0.25", fc="white", ec="gray", alpha=0.9),
+            arrowprops=dict(arrowstyle="->", lw=0.8, color="gray")
+        )
+
+    ax.set_title(f"Representative slice (tech_max={tech_slice}). Mean acceptance vs Process")
+    ax.set_xlabel("Process input (normalized; observed grid range)")
+    ax.set_ylabel("Mean Total Acceptance Index")
+    ax.legend()
+    fig.tight_layout()
+    return fig
+
+def make_s10b_boundary_curve_plot(df_grid: pd.DataFrame):
+    \"\"\"S10b: Boundary curves across tech_max (mean acceptance criterion).\"\"\"
+    bau_bc = boundary_curve_from_grid(df_grid, "BAU", metric="mean")
+    site_bc = boundary_curve_from_grid(df_grid, "SITE", metric="mean")
+
+    fig, ax = plt.subplots(figsize=(11, 5.5))
+    ax.plot(bau_bc["tech_max"], bau_bc["min_process_for_mean_gt0"], marker="o", linewidth=2.5, color="darkred", label="BAU boundary (mean>0)")
+    ax.plot(site_bc["tech_max"], site_bc["min_process_for_mean_gt0"], marker="o", linewidth=2.5, color="darkblue", label="SITE boundary (mean>0)")
+
+    ax.set_title("Viability boundary curves across technology intensity (mean acceptance criterion)")
+    ax.set_xlabel("tech_max (normalized)")
+    ax.set_ylabel("Min Process for mean(A_total)>0")
+    ax.legend()
+    fig.tight_layout()
+    return fig
+
+@st.cache_data(show_spinner=False)
+def run_s9_robustness_screening(
+    profiles: Dict[str, Dict[str, float]],
+    base_weights: Dict[str, float],
+    tech_fixed: float,
+    deltas: Tuple[float, ...],
+    n_samples: int,
+    process_vals: Tuple[float, ...],
+    steps: int,
+    tau_synergy: float,
+    synergy_gain: float,
+):
+    \"\"\"S9: robustness screening over ω_i (Dirichlet around base_weights) and δ at fixed tech_max.\"\"\"
+    base = np.array([base_weights.get("F1", 0.25), base_weights.get("F2", 0.25), base_weights.get("F3", 0.25), base_weights.get("F4", 0.25)], float)
+    base = base / base.sum()
+    alpha = base * 30.0  # concentration around base
+    local_rng = np.random.default_rng(RNG_SEED)
+
+    rows = []
+    for d in deltas:
+        for _ in range(n_samples):
+            wv = local_rng.dirichlet(alpha)
+            w = {"F1": float(wv[0]), "F2": float(wv[1]), "F3": float(wv[2]), "F4": float(wv[3])}
+
+            # BAU boundary (mean>0) as function of process_max
+            bau_means = []
+            bau_finals = []
+            for proc in process_vals:
+                pB = SimParams(
+                    tech_max=float(tech_fixed),
+                    process_max=float(proc),
+                    penalty_delta=float(d),
+                    tau_synergy=float(tau_synergy),
+                    synergy_gain=float(synergy_gain),
+                )
+                _, A = simulate_series(profiles, w, steps, "BAU", pB)
+                met = calculate_metrics(A)
+                bau_means.append(met["mean"])
+                bau_finals.append(met["final"])
+
+            bau_means = np.asarray(bau_means, float)
+            bau_finals = np.asarray(bau_finals, float)
+            idx = np.where(bau_means > 0)[0]
+            bau_b = np.nan if len(idx) == 0 else float(process_vals[idx[0]])
+            deadlock_like = bool((bau_means[0] <= 0) and (bau_finals[-1] <= 0))
+
+            # SITE boundary (mean>0)
+            site_means = []
+            for proc in process_vals:
+                pS = SimParams(
+                    tech_max=float(tech_fixed),
+                    process_max=float(proc),
+                    penalty_delta=float(d),
+                    tau_synergy=float(tau_synergy),
+                    synergy_gain=float(synergy_gain),
+                )
+                _, A = simulate_series(profiles, w, steps, "SITE", pS)
+                site_means.append(calculate_metrics(A)["mean"])
+
+            site_means = np.asarray(site_means, float)
+            idx2 = np.where(site_means > 0)[0]
+            site_b = np.nan if len(idx2) == 0 else float(process_vals[idx2[0]])
+
+            rows.append({
+                "delta": float(d),
+                "bau_mean_boundary": float(bau_b) if not np.isnan(bau_b) else np.nan,
+                "site_mean_boundary": float(site_b) if not np.isnan(site_b) else np.nan,
+                "improvement_bau_minus_site": float(bau_b - site_b) if (not np.isnan(bau_b) and not np.isnan(site_b)) else np.nan,
+                "deadlock_like": deadlock_like,
+            })
+    return pd.DataFrame(rows)
+
+def make_s9_plot(df_s9: pd.DataFrame, tech_fixed: float):
+    \"\"\"S9: clarified two-panel plot (boxplots + deadlock-like rate).\"\"\"
+    deltas = np.array(sorted(df_s9["delta"].unique()))
+    data_bau = [df_s9[df_s9["delta"] == d]["bau_mean_boundary"].dropna().values for d in deltas]
+    data_site = [df_s9[df_s9["delta"] == d]["site_mean_boundary"].dropna().values for d in deltas]
+    deadlock_rate = [df_s9[df_s9["delta"] == d]["deadlock_like"].mean() for d in deltas]
+
+    pos = np.arange(len(deltas))
+
+    fig = plt.figure(figsize=(12, 7))
+    gs = fig.add_gridspec(2, 1, height_ratios=[3, 1], hspace=0.15)
+
+    ax = fig.add_subplot(gs[0, 0])
+    bp_bau = ax.boxplot(data_bau, positions=pos - 0.18, widths=0.30, patch_artist=True, showfliers=False)
+    bp_site = ax.boxplot(data_site, positions=pos + 0.18, widths=0.30, patch_artist=True, showfliers=False)
+
+    for b in bp_bau["boxes"]:
+        b.set(facecolor="white", hatch="")
+    for b in bp_site["boxes"]:
+        b.set(facecolor="white", hatch="///")
+
+    ax.set_xticks(pos)
+    ax.set_xticklabels([f"{d:.1f}" for d in deltas])
+    ax.set_ylabel(f"Min Process for mean(A_total)>0\n(coarse screening; tech_max={tech_fixed})")
+    ax.set_title("Supplementary S9: Robustness to ω_i and δ (BAU vs SITE boundaries)")
+
+    # manual legend proxies
+    import matplotlib.patches as mpatches
+    bau_patch = mpatches.Patch(facecolor="white", edgecolor="black", hatch="", label="BAU boundary (mean>0)")
+    site_patch = mpatches.Patch(facecolor="white", edgecolor="black", hatch="///", label="SITE boundary (mean>0)")
+    ax.legend(handles=[bau_patch, site_patch], loc="upper left", frameon=True)
+
+    ax2 = fig.add_subplot(gs[1, 0], sharex=ax)
+    ax2.plot(pos, deadlock_rate, marker="o")
+    ax2.set_ylabel("Deadlock-like rate\n(BAU)")
+    ax2.set_xlabel("Deadlock penalty δ")
+    ax2.set_ylim(0, max(deadlock_rate) * 1.15 if len(deadlock_rate) else 1.0)
+    ax2.text(
+        0.01, 0.85,
+        "deadlock-like = (BAU mean≤0 at lowest Process) AND (BAU final≤0 at highest Process)\nwithin the coarse grid used for screening",
+        transform=ax2.transAxes, va="top"
+    )
+
+    fig.tight_layout()
+    return fig
 
 # =========================================================
 # 6) UI
@@ -443,12 +642,13 @@ with tab4:
 
 with tab5:
     st.subheader("SITE vs BAU simulation + sensitivity (integrated)")
-    st.caption("Includes scenario trajectories and S10-style process×tech boundary mapping.")
+    st.caption("Tab 5 includes Supplementary-style figures: S9 (robustness), S10a (slice), S10b (boundary curves).")
 
     profiles = calculate_agent_profiles_from_factor_arrays(fa_df)
     st.markdown("**Agent sensitivities (median z by category)**")
     st.dataframe(pd.DataFrame(profiles).T, use_container_width=True)
 
+    # --- weights and key parameters ---
     st.markdown("#### Controls")
     c1, c2, c3, c4 = st.columns(4)
     w1 = c1.number_input("F1 weight", 0.0, 1.0, float(weights_est.get("F1", 0.25)))
@@ -463,10 +663,12 @@ with tab5:
     synergy_gain = d3.slider("Synergy gain", 0.0, 1.0, 0.5, 0.05)
     steps = d4.slider("Simulation steps", 12, 60, 24)
 
+    # --- illustrative trajectories ---
+    st.markdown("#### Scenario trajectories (illustrative)")
     t1, t2, t3 = st.columns(3)
-    tech_max = t1.slider("tech_max", 0.5, 1.5, 1.2, 0.05)
-    process_max = t2.slider("process_max (SITE)", 0.5, 1.5, 1.0, 0.05)
-    proc_shift = t3.slider("proc_shift (timing)", -0.2, 0.2, 0.0, 0.05)
+    tech_max = t1.slider("tech_max (illustrative)", 0.5, 1.5, 1.2, 0.05)
+    process_max = t2.slider("process_max (controls Process effort)", 0.5, 1.5, 1.0, 0.05)
+    proc_shift = t3.slider("proc_shift (timing lead/lag)", -0.2, 0.2, 0.0, 0.05)
 
     params = SimParams(
         tech_max=float(tech_max),
@@ -480,33 +682,39 @@ with tab5:
 
     hist_bau, A_bau = simulate_series(profiles, w_custom, int(steps), "BAU", params)
     hist_site, A_site = simulate_series(profiles, w_custom, int(steps), "SITE", params)
+
     met_bau = calculate_metrics(A_bau)
     met_site = calculate_metrics(A_site)
 
-    fig = go.Figure()
-    fig.add_trace(go.Scatter(x=hist_bau["t"], y=hist_bau["A_total"], name="BAU A_total", line=dict(color="darkred", width=3)))
-    fig.add_trace(go.Scatter(x=hist_site["t"], y=hist_site["A_total"], name="SITE A_total", line=dict(color="darkblue", width=3)))
-    fig.add_hline(y=0, line_dash="dash", line_color="black")
-    fig.update_layout(title="A_total trajectories", xaxis_title="t", yaxis_title="A_total (±100)", template="plotly_white")
-    st.plotly_chart(fig, use_container_width=True)
+    fig_ts = go.Figure()
+    fig_ts.add_trace(go.Scatter(x=hist_bau["t"], y=hist_bau["A_total"], name="BAU A_total", line=dict(color="darkred", width=3)))
+    fig_ts.add_trace(go.Scatter(x=hist_site["t"], y=hist_site["A_total"], name="SITE A_total", line=dict(color="darkblue", width=3)))
+    fig_ts.add_hline(y=0, line_dash="dash", line_color="black")
+    fig_ts.update_layout(title="A_total trajectories", xaxis_title="t", yaxis_title="A_total (±100)", template="plotly_white")
+    st.plotly_chart(fig_ts, use_container_width=True)
 
-    c1, c2 = st.columns(2)
-    with c1:
+    cA, cB = st.columns(2)
+    with cA:
         st.markdown("**BAU metrics**")
         st.json(met_bau)
-    with c2:
+    with cB:
         st.markdown("**SITE metrics**")
         st.json(met_site)
 
     st.markdown("---")
-    st.markdown("#### S10-style: process_max × tech_max grid (mean criterion)")
+    st.markdown("## Supplementary S10 (mean acceptance criterion)")
+    st.caption("S10a: representative slice at tech_max=1.2. S10b: boundary curves across technology intensity.")
+
+    # Keep grid in session_state so S10 plots can render after running.
+    if "df_grid" not in st.session_state:
+        st.session_state["df_grid"] = None
 
     tech_vals = tuple(np.linspace(0.5, 1.5, 20).round(6))
     process_vals = tuple(np.linspace(0.5, 1.5, 20).round(6))
 
-    if st.button("Run grid search (BAU & SITE)", type="primary"):
-        with st.spinner("Running grid…"):
-            df_grid = run_process_tech_grid(
+    if st.button("Run S10 grid search (BAU & SITE)", type="primary"):
+        with st.spinner("Running process×tech grid…"):
+            st.session_state["df_grid"] = run_process_tech_grid(
                 profiles=profiles,
                 weights=w_custom,
                 steps=int(steps),
@@ -516,19 +724,58 @@ with tab5:
                 tech_vals=tech_vals,
                 process_vals=process_vals,
             )
-        st.success("Grid complete.")
+        st.success("S10 grid complete.")
 
-        # boundary curves
-        bau_bc = boundary_curve_from_grid(df_grid, "BAU", metric="mean")
-        site_bc = boundary_curve_from_grid(df_grid, "SITE", metric="mean")
+    if st.session_state["df_grid"] is not None:
+        df_grid = st.session_state["df_grid"]
 
-        fig_bc = go.Figure()
-        fig_bc.add_trace(go.Scatter(x=bau_bc["tech_max"], y=bau_bc["min_process_for_mean_gt0"], mode="lines+markers", name="BAU boundary", line=dict(color="darkred", width=3)))
-        fig_bc.add_trace(go.Scatter(x=site_bc["tech_max"], y=site_bc["min_process_for_mean_gt0"], mode="lines+markers", name="SITE boundary", line=dict(color="darkblue", width=3)))
-        fig_bc.update_layout(title="Viability boundary curves (mean>0)", xaxis_title="tech_max", yaxis_title="min process_max", template="plotly_white")
-        st.plotly_chart(fig_bc, use_container_width=True)
+        # S10a (slice at tech=1.2)
+        fig_s10a = make_s10a_slice_plot(df_grid, tech_slice=1.2, tau_synergy=float(tau_synergy))
+        st.pyplot(fig_s10a, use_container_width=True)
 
-        st.download_button("Download grid CSV", df_grid.to_csv(index=False).encode("utf-8-sig"), "process_tech_grid_metrics.csv", "text/csv")
+        # S10b (boundary curves)
+        fig_s10b = make_s10b_boundary_curve_plot(df_grid)
+        st.pyplot(fig_s10b, use_container_width=True)
+
+        # downloads
+        st.download_button("Download S10 grid CSV", df_grid.to_csv(index=False).encode("utf-8-sig"), "S10_process_tech_grid.csv", "text/csv")
+
+    st.markdown("---")
+    st.markdown("## Supplementary S9 (robustness screening: ω_i × δ)")
+    st.caption("S9 screens robustness of the BAU vs SITE ordering by sampling ω_i around estimated weights and sweeping δ (coarse process grid).")
+
+    if "df_s9" not in st.session_state:
+        st.session_state["df_s9"] = None
+
+    r1, r2, r3 = st.columns(3)
+    tech_fixed = r1.slider("tech_max for S9", 0.5, 1.5, 1.2, 0.05)
+    n_samples = r2.slider("ω samples per δ", 50, 300, 150, 50)
+    deltas = r3.multiselect("δ values", [1.0, 1.2, 1.5, 1.8, 2.1, 2.5], default=[1.0, 1.5, 2.5])
+
+    if st.button("Run S9 robustness screening"):
+        if len(deltas) == 0:
+            st.warning("Select at least one δ.")
+        else:
+            with st.spinner("Running S9 robustness screening…"):
+                process_vals_r = tuple(np.linspace(0.5, 1.5, 12).round(6))  # coarse screening grid
+                st.session_state["df_s9"] = run_s9_robustness_screening(
+                    profiles=profiles,
+                    base_weights=weights_est,
+                    tech_fixed=float(tech_fixed),
+                    deltas=tuple(float(d) for d in deltas),
+                    n_samples=int(n_samples),
+                    process_vals=process_vals_r,
+                    steps=int(max(12, steps//2)),
+                    tau_synergy=float(tau_synergy),
+                    synergy_gain=float(synergy_gain),
+                )
+            st.success("S9 screening complete.")
+
+    if st.session_state["df_s9"] is not None:
+        df_s9 = st.session_state["df_s9"]
+        fig_s9 = make_s9_plot(df_s9, tech_fixed=float(tech_fixed))
+        st.pyplot(fig_s9, use_container_width=True)
+        st.download_button("Download S9 CSV", df_s9.to_csv(index=False).encode("utf-8-sig"), "S9_robustness_runs.csv", "text/csv")
 
     st.markdown("---")
     st.markdown("**Concise claim for NE**")
