@@ -1,119 +1,120 @@
 # -*- coding: utf-8 -*-
 """
-Final Q-Methodology Analysis (Fixed 4 Factors + System Dynamics)
-- Purpose: Generate final report data for Nature Energy submission.
-- Update: 
-  - [FIX] Fixed numpy string concatenation error in Tab 4 (Percentage calculation).
+Nature Energy submission app (Streamlit)
+Integrated Q-methodology (4 factors) + TPPP mapping + ABM/SD-informed simulations and sensitivity analyses.
+Author: 
+  Prof. Dr. Songhee Kang, Tech University of Korea
+Run:
+  streamlit run ne-tppp-q-abm-analysis_streamlit.py
 """
 
 import io
+from dataclasses import dataclass
+from typing import Dict, List, Tuple
+
 import numpy as np
 import pandas as pd
 import streamlit as st
-import plotly.express as px
 import plotly.graph_objects as go
-from plotly.subplots import make_subplots
-from scipy.stats import spearmanr, norm as normal_dist
-import itertools
+from scipy.stats import spearmanr
 
-# ==========================================
-# 1. Configuration & Constants
-# ==========================================
-st.set_page_config(page_title="Final Q-Analysis (Nature Energy Ver.)", layout="wide")
-
+# =========================================================
+# 0) Page config
+# =========================================================
+st.set_page_config(page_title="NE Q-TPPP + ABM Pre-evaluation", layout="wide")
 RNG_SEED = 42
 rng = np.random.default_rng(RNG_SEED)
 
-# 24 Statements
+# =========================================================
+# 1) Constants
+# =========================================================
 STATEMENTS = [
-    "데이터센터는 재생에너지를 사용할 때 환경 책임성을 갖춘 시설로 평가받을 수 있다.", # Q01
-    "디젤이나 가스 발전기를 백업 전력으로 사용할 경우 환경적 우려가 제기될 수 있다.", # Q02
-    "물 절약이나 친환경 냉각 기술의 도입은 시민 신뢰에 긍정적 영향을 줄 수 있다.", # Q03
-    "기술이 최신이더라도 안전성 확보가 부족하면 시민 불안을 유발할 수 있다.", # Q04
-    "데이터센터 기술은 비용 효율성보다는 사회적 책임을 우선시해야 한다는 견해가 있다.", # Q05
-    "기술이 낯설거나 복잡하게 인식되면 시민과의 거리감이 커질 수 있다.", # Q06
-    "데이터센터 건설 과정에 시민 의견이 반영되지 않으면 반발 가능성이 높아질 수 있다.", # Q07
-    "지역 사회와 장기적 관계를 맺어온 기업은 더 높은 신뢰를 받을 수 있다.", # Q08
-    "설명회가 형식적으로 보일 경우, 시민 불신을 유발할 수 있다.", # Q09
-    "정보 접근성이 낮을수록 시민의 불안과 의심이 증가할 수 있다.", # Q10
-    "갈등 상황에서는 중립적 제3자의 개입이 조정에 도움이 될 수 있다.", # Q11
-    "동일한 설명이라도 정부가 전달할 경우 기업보다 더 신뢰받을 가능성이 있다.", # Q12
-    "기존 공장이나 발전소 부지를 재활용한 데이터센터는 수용성이 높아질 수 있다.", # Q13
-    "지역 정체성과 조화를 이루지 못하는 입지는 거부감을 유발할 수 있다.", # Q14
-    "자연경관 훼손이 발생하는 경우, 기술 우수성만으로 수용성 확보는 어려울 수 있다.", # Q15
-    "수도권과 지방은 데이터센터 입지에 대해 서로 다른 기준을 가질 수 있다.", # Q16
-    "외부 자본 주도의 일방적인 입지 결정은 지역사회의 신뢰를 저해할 수 있다.", # Q17
-    "지역에 실질적인 혜택이 제공되면 시민 수용성이 높아질 수 있다.", # Q18
-    "초기 단계에서 정보가 투명하게 공개되면 시민 신뢰가 높아질 수 있다.", # Q19
-    "환경영향평가 결과는 시민들의 수용 여부에 중요한 판단 기준이 될 수 있다.", # Q20
-    "기업과 지자체가 공동으로 결정한 프로젝트는 더 높은 신뢰를 얻을 수 있다.", # Q21
-    "법적 요건을 충족하더라도 시민 신뢰를 확보하려면 추가적인 설명이 필요할 수 있다.", # Q22
-    "지역 언론이 신속하고 정확하게 정보를 전달하면 신뢰성 제고에 기여할 수 있다.", # Q23
-    "데이터센터 완공 이후에도 모니터링과 피드백 체계가 지속되면 신뢰 유지에 도움이 될 수 있다." # Q24
+    "데이터센터는 재생에너지를 사용할 때 환경 책임성을 갖춘 시설로 평가받을 수 있다.",
+    "디젤이나 가스 발전기를 백업 전력으로 사용할 경우 환경적 우려가 제기될 수 있다.",
+    "물 절약이나 친환경 냉각 기술의 도입은 시민 신뢰에 긍정적 영향을 줄 수 있다.",
+    "기술이 최신이더라도 안전성 확보가 부족하면 시민 불안을 유발할 수 있다.",
+    "데이터센터 기술은 비용 효율성보다는 사회적 책임을 우선시해야 한다는 견해가 있다.",
+    "기술이 낯설거나 복잡하게 인식되면 시민과의 거리감이 커질 수 있다.",
+    "데이터센터 건설 과정에 시민 의견이 반영되지 않으면 반발 가능성이 높아질 수 있다.",
+    "지역 사회와 장기적 관계를 맺어온 기업은 더 높은 신뢰를 받을 수 있다.",
+    "설명회가 형식적으로 보일 경우, 시민 불신을 유발할 수 있다.",
+    "정보 접근성이 낮을수록 시민의 불안과 의심이 증가할 수 있다.",
+    "갈등 상황에서는 중립적 제3자의 개입이 조정에 도움이 될 수 있다.",
+    "동일한 설명이라도 정부가 전달할 경우 기업보다 더 신뢰받을 가능성이 있다.",
+    "기존 공장이나 발전소 부지를 재활용한 데이터센터는 수용성이 높아질 수 있다.",
+    "지역 정체성과 조화를 이루지 못하는 입지는 거부감을 유발할 수 있다.",
+    "자연경관 훼손이 발생하는 경우, 기술 우수성만으로 수용성 확보는 어려울 수 있다.",
+    "수도권과 지방은 데이터센터 입지에 대해 서로 다른 기준을 가질 수 있다.",
+    "외부 자본 주도의 일방적인 입지 결정은 지역사회의 신뢰를 저해할 수 있다.",
+    "지역에 실질적인 혜택이 제공되면 시민 수용성이 높아질 수 있다.",
+    "초기 단계에서 정보가 투명하게 공개되면 시민 신뢰가 높아질 수 있다.",
+    "환경영향평가 결과는 시민들의 수용 여부에 중요한 판단 기준이 될 수 있다.",
+    "기업과 지자체가 공동으로 결정한 프로젝트는 더 높은 신뢰를 얻을 수 있다.",
+    "법적 요건을 충족하더라도 시민 신뢰를 확보하려면 추가적인 설명이 필요할 수 있다.",
+    "지역 언론이 신속하고 정확하게 정보를 전달하면 신뢰성 제고에 기여할 수 있다.",
+    "데이터센터 완공 이후에도 모니터링과 피드백 체계가 지속되면 신뢰 유지에 도움이 될 수 있다."
 ]
-
 Q_MAP = {f"Q{i+1:02d}": txt for i, txt in enumerate(STATEMENTS)}
 
-# TPPP Mapping
 TPPP_CATEGORIES = {
     "Technology": ["Q01", "Q02", "Q03", "Q04", "Q05", "Q06"],
     "People": ["Q08", "Q09", "Q10", "Q12", "Q22", "Q23"],
     "Place": ["Q13", "Q14", "Q15", "Q16", "Q17", "Q18"],
-    "Process": ["Q07", "Q11", "Q19", "Q20", "Q21", "Q24"]
+    "Process": ["Q07", "Q11", "Q19", "Q20", "Q21", "Q24"],
 }
-Q_TO_TPPP = {}
-for cat, items in TPPP_CATEGORIES.items():
-    for item in items: Q_TO_TPPP[item] = cat
+Q_TO_TPPP = {q: cat for cat, qs in TPPP_CATEGORIES.items() for q in qs}
+FACTOR_NAMES = ["F1", "F2", "F3", "F4"]
 
-# ==========================================
-# 2. Q-Methodology Logic
-# ==========================================
-
-def standardize_rows(X):
+# =========================================================
+# 2) Q-methodology core
+# =========================================================
+def _standardize_rows(X: np.ndarray) -> np.ndarray:
     mean = np.nanmean(X, axis=1, keepdims=True)
     std = np.nanstd(X, axis=1, ddof=1, keepdims=True)
-    std[std == 0] = 1.0 
+    std[std == 0] = 1.0
     return (X - mean) / std
 
 class QEngine:
-    def __init__(self, data_df, n_factors=4):
+    def __init__(self, data_df: pd.DataFrame, n_factors: int = 4):
         self.q_df = data_df.select_dtypes(include=[np.number])
-        temp_data = self.q_df.values
-        row_means = np.nanmean(temp_data, axis=1)
-        inds = np.where(np.isnan(temp_data))
-        temp_data[inds] = np.take(row_means, inds[0])
-        self.data = np.nan_to_num(temp_data, nan=0.0)
+        temp = self.q_df.values.astype(float)
+        row_means = np.nanmean(temp, axis=1)
+        inds = np.where(np.isnan(temp))
+        temp[inds] = np.take(row_means, inds[0])
+        self.data = np.nan_to_num(temp, nan=0.0)
         self.n_factors = n_factors
-        self.calculated_weights = {} 
+        self.calculated_weights: Dict[str, float] = {}
 
-    def fit(self):
+    def fit(self) -> "QEngine":
         R, _ = spearmanr(self.data, axis=1)
         self.R = np.nan_to_num(R, nan=0.0)
         eigvals, eigvecs = np.linalg.eigh(self.R)
         idx = eigvals.argsort()[::-1]
         self.eigvals = eigvals[idx]
         eigvecs = eigvecs[:, idx]
-        k = self.n_factors
-        valid_eigvals = np.maximum(self.eigvals[:k], 0)
-        L = eigvecs[:, :k] * np.sqrt(valid_eigvals)
-        self.loadings = self._varimax(L)
-        
-        # Calculate Population Weights from Loadings
-        max_idxs = np.argmax(np.abs(self.loadings), axis=1)
-        counts = {f"F{i+1}": 0 for i in range(k)}
-        for i in max_idxs: counts[f"F{i+1}"] += 1
-        total = len(max_idxs)
-        self.calculated_weights = {k: v/total for k, v in counts.items()}
 
-        z_data = standardize_rows(self.data)
+        k = self.n_factors
+        valid_eigs = np.maximum(self.eigvals[:k], 0)
+        L = eigvecs[:, :k] * np.sqrt(valid_eigs)
+        self.loadings = self._varimax(L)
+
+        # population weights by max abs loading
+        max_idx = np.argmax(np.abs(self.loadings), axis=1)
+        counts = {f"F{i+1}": 0 for i in range(k)}
+        for i in max_idx:
+            counts[f"F{i+1}"] += 1
+        total = len(max_idx)
+        self.calculated_weights = {k: v / total for k, v in counts.items()}
+
+        z_data = _standardize_rows(self.data)
         self.factor_arrays = self._calculate_factor_arrays(self.loadings, z_data)
         return self
 
-    def _varimax(self, Phi, gamma=1.0, q=20, tol=1e-6):
+    def _varimax(self, Phi: np.ndarray, gamma: float = 1.0, q: int = 20, tol: float = 1e-6) -> np.ndarray:
         p, k = Phi.shape
         R = np.eye(k)
-        d = 0
-        for i in range(q):
+        d = 0.0
+        for _ in range(q):
             d_old = d
             Lambda = np.dot(Phi, R)
             u, s, vh = np.linalg.svd(
@@ -121,565 +122,416 @@ class QEngine:
             )
             R = np.dot(u, vh)
             d = np.sum(s)
-            if d_old != 0 and d/d_old < 1 + tol: break
+            if d_old != 0 and d/d_old < 1 + tol:
+                break
         return np.dot(Phi, R)
 
-    def _calculate_factor_arrays(self, loadings, z_data):
+    def _calculate_factor_arrays(self, loadings: np.ndarray, z_data: np.ndarray) -> np.ndarray:
         n_items = z_data.shape[1]
         arrays = np.zeros((n_items, self.n_factors))
         for f in range(self.n_factors):
             l_vec = loadings[:, f]
             l_clean = np.clip(l_vec, -0.95, 0.95)
-            weights = l_clean / (1 - l_clean**2)
-            if np.sum(np.abs(weights)) < 1e-6: continue
-            weighted_sum = np.dot(weights, z_data)
-            arr_mean = np.mean(weighted_sum)
-            arr_std = np.std(weighted_sum, ddof=1)
-            if arr_std == 0: arr_std = 1.0
-            arrays[:, f] = (weighted_sum - arr_mean) / arr_std
+            w = l_clean / (1 - l_clean**2)
+            if np.sum(np.abs(w)) < 1e-6:
+                continue
+            weighted_sum = np.dot(w, z_data)
+            mu = np.mean(weighted_sum)
+            sd = np.std(weighted_sum, ddof=1)
+            if sd == 0:
+                sd = 1.0
+            arrays[:, f] = (weighted_sum - mu) / sd
         return arrays
 
-def calculate_type_tppp_profile(factor_arrays, q_labels, mapping):
-    df_arrays = pd.DataFrame(factor_arrays, index=q_labels)
-    profiles = {}
-    for i in range(factor_arrays.shape[1]):
-        f_name = f"F{i+1}"
-        cat_scores = {}
-        for cat, items in mapping.items():
-            valid_items = [item for item in items if item in df_arrays.index]
-            if valid_items:
-                cat_scores[cat] = df_arrays.loc[valid_items, i].mean()
-        profiles[f_name] = cat_scores
-    return pd.DataFrame(profiles)
-
-def calculate_tppp_scores(df_q, mapping):
+def calculate_tppp_scores(df_q: pd.DataFrame) -> pd.DataFrame:
     scores = pd.DataFrame(index=df_q.index)
-    for cat, items in mapping.items():
-        valid_items = [i for i in items if i in df_q.columns]
-        if valid_items:
-            scores[cat] = df_q[valid_items].mean(axis=1)
+    for cat, items in TPPP_CATEGORIES.items():
+        scores[cat] = df_q[items].mean(axis=1)
     return scores
 
-def create_system_network(corr_matrix, threshold=0.3):
+def calculate_type_tppp_profile(factor_arrays: np.ndarray, q_labels: List[str]) -> pd.DataFrame:
+    df_arrays = pd.DataFrame(factor_arrays, index=q_labels, columns=FACTOR_NAMES)
+    out = {}
+    for f in FACTOR_NAMES:
+        out[f] = {cat: float(df_arrays.loc[qs, f].mean()) for cat, qs in TPPP_CATEGORIES.items()}
+    return pd.DataFrame(out)
+
+# =========================================================
+# 3) System network (TPPP links)
+# =========================================================
+def create_system_network(corr_matrix: pd.DataFrame, threshold: float = 0.3) -> go.Figure:
     nodes = list(corr_matrix.columns)
-    pos = {
-        nodes[0]: (0, 1),   # Tech
-        nodes[1]: (1, 0),   # People
-        nodes[2]: (0, -1),  # Place
-        nodes[3]: (-1, 0)   # Process
-    }
-    
+    pos = {nodes[0]: (0, 1), nodes[1]: (1, 0), nodes[2]: (0, -1), nodes[3]: (-1, 0)}
     fig = go.Figure()
-    
     for i in range(len(nodes)):
         for j in range(i+1, len(nodes)):
-            n1, n2 = nodes[i], nodes[j]
-            corr_val = corr_matrix.iloc[i, j]
-            
-            if abs(corr_val) >= threshold:
+            r = float(corr_matrix.iloc[i, j])
+            if abs(r) >= threshold:
+                n1, n2 = nodes[i], nodes[j]
                 x0, y0 = pos[n1]
                 x1, y1 = pos[n2]
-                color = '#E63946' if corr_val < 0 else '#457B9D'
-                width = abs(corr_val) * 10
-                
                 fig.add_trace(go.Scatter(
                     x=[x0, x1, None],
                     y=[y0, y1, None],
-                    mode='lines',
-                    line=dict(width=width, color=color),
-                    hoverinfo='text',
-                    text=f"{n1} ↔ {n2}<br>Corr: {corr_val:.2f}",
+                    mode="lines",
+                    line=dict(width=abs(r)*10, color=("#E63946" if r < 0 else "#457B9D")),
+                    hoverinfo="text",
+                    text=f"{n1} ↔ {n2}<br>Spearman ρ: {r:.2f}",
                     showlegend=False
                 ))
-
-    node_x = [pos[n][0] for n in nodes]
-    node_y = [pos[n][1] for n in nodes]
-    
     fig.add_trace(go.Scatter(
-        x=node_x, y=node_y,
-        mode='markers+text',
+        x=[pos[n][0] for n in nodes],
+        y=[pos[n][1] for n in nodes],
+        mode="markers+text",
         text=nodes,
         textposition=["top center", "middle right", "bottom center", "middle left"],
-        textfont=dict(size=15, color='black'),
-        marker=dict(size=45, color='white', line=dict(width=3, color='#333')),
-        hoverinfo='none',
-        name='Factors'
+        textfont=dict(size=15, color="black"),
+        marker=dict(size=45, color="white", line=dict(width=3, color="#333")),
+        hoverinfo="none",
+        showlegend=False
     ))
-    
     fig.update_layout(
-        title="TPPP System Dynamics (Feedback Loops)",
+        title="TPPP System Network (Spearman links)",
         xaxis=dict(showgrid=False, zeroline=False, showticklabels=False, range=[-1.5, 1.5]),
         yaxis=dict(showgrid=False, zeroline=False, showticklabels=False, range=[-1.5, 1.5]),
         margin=dict(l=20, r=20, t=50, b=20),
-        plot_bgcolor='white',
-        height=600
+        plot_bgcolor="white",
+        height=560
     )
     return fig
 
-def calculate_agent_profiles(df):
+# =========================================================
+# 4) Simulation model (integrated from sensitivity notebook)
+# =========================================================
+def calculate_agent_profiles_from_factor_arrays(fa_only: pd.DataFrame) -> Dict[str, Dict[str, float]]:
     profiles = {}
-    factors = [c for c in df.columns if c.startswith('F') and c[1:].isdigit()]
-    
-    if 'Q_ID' not in df.columns:
-        if len(df) == 24:
-            df['Q_ID'] = [f"Q{i+1:02d}" for i in range(24)]
-        else:
-            df['Q_ID'] = [f"Q{i+1:02d}" for i in range(len(df))]
-    
-    for f in factors:
-        agent_props = {}
-        for cat, q_ids in TPPP_CATEGORIES.items():
-            mask = df['Q_ID'].isin(q_ids)
-            if mask.sum() > 0:
-                median_z = df.loc[mask, f].median()
-                agent_props[cat] = median_z
-            else:
-                agent_props[cat] = 0.0
-        profiles[f] = agent_props
+    for f in FACTOR_NAMES:
+        profiles[f] = {cat: float(fa_only.loc[qs, f].median()) for cat, qs in TPPP_CATEGORIES.items()}
     return profiles
 
-def run_simulation(profiles, steps=24, scenario="BAU", weights=None, sensitivity_params=None):
-    history = []
-
-    # --- defaults ---
-    if sensitivity_params is None:
-        sensitivity_params = {
-            "tech_max": 1.2,
-            "place_max": 0.9,
-            "process_max": 1.2,
-            "people_max": 1.0,
-            "penalty": 1.5,
-            "synergy_coeff": 0.8,
-        }
-    else:
-        if "synergy_coeff" not in sensitivity_params:
-            if "synergy_bonus" in sensitivity_params:
-                sensitivity_params["synergy_coeff"] = sensitivity_params["synergy_bonus"]
-            elif "synergy" in sensitivity_params:
-                sensitivity_params["synergy_coeff"] = sensitivity_params["synergy"]
-            else:
-                sensitivity_params["synergy_coeff"] = 0.8
-
-    # --- weights default ---
-    if weights is None:
-        weights = {agent: 1.0 / len(profiles) for agent in profiles}
-    else:
-        s = sum(weights.get(a, 0.0) for a in profiles)
-        if s > 0:
-            weights = {a: weights.get(a, 0.0) / s for a in profiles}
-        else:
-            weights = {agent: 1.0 / len(profiles) for agent in profiles}
-
-    scenario_norm = str(scenario).strip()
-    scenario_alias = {
-        "BAU": "BAU (Technocratic Push)",
-        "bau": "BAU (Technocratic Push)",
-        "BAU (Technocratic Push)": "BAU (Technocratic Push)",
-        "SITE": "SITE Protocol (Socio-Technical)",
-        "site": "SITE Protocol (Socio-Technical)",
-        "SITE Protocol (Socio-Technical)": "SITE Protocol (Socio-Technical)",
-        "Sensitivity Test (Custom)": "Sensitivity Test (Custom)",
+def calculate_metrics(series: np.ndarray) -> Dict[str, float]:
+    series = np.asarray(series, dtype=float)
+    n = len(series)
+    k = max(1, n // 3)
+    return {
+        "mean": float(series.mean()),
+        "early_mean": float(series[:k].mean()),
+        "late_mean": float(series[-k:].mean()),
+        "final": float(series[-1]),
     }
-    scenario_norm = scenario_alias.get(scenario_norm, scenario_norm)
 
-    def profile_curve(points):
-        t = np.linspace(0, 1, steps)
-        xp, fp = zip(*points)
-        return np.interp(t, xp, fp)
+def _interp_curve(points: List[Tuple[float, float]], steps: int, gamma: float = 1.0) -> np.ndarray:
+    t = np.linspace(0, 1, steps)
+    tw = np.clip(t**gamma, 0.0, 1.0)
+    xp, fp = zip(*points)
+    return np.interp(tw, np.asarray(xp, float), np.asarray(fp, float))
 
-    # --- Policy Inputs based on scenario ---
-    if scenario_norm == "BAU (Technocratic Push)":
-        tech_max = sensitivity_params.get("tech_max", 1.2)
-        process_floor = sensitivity_params.get("process_floor", 0.1)
-        people_floor = sensitivity_params.get("people_floor", 0.1)
+def _shift_points(points: List[Tuple[float, float]], shift: float) -> List[Tuple[float, float]]:
+    shifted = []
+    for x, y in points:
+        if x <= 0.0:
+            shifted.append((0.0, y))
+        elif x >= 1.0:
+            shifted.append((1.0, y))
+        else:
+            shifted.append((float(np.clip(x - shift, 0.0, 1.0)), y))
+    shifted.sort(key=lambda t: t[0])
+    out = [shifted[0]]
+    eps = 1e-6
+    for x, y in shifted[1:]:
+        if x <= out[-1][0]:
+            x = min(1.0, out[-1][0] + eps)
+        out.append((x, y))
+    out[0] = (0.0, out[0][1])
+    out[-1] = (1.0, out[-1][1])
+    return out
 
-        tech_in = profile_curve([(0, 0.6), (1, tech_max)])
-        place_in = np.full(steps, 0.2)
-        process_in = profile_curve([(0, 0.4), (0.4, 0.25), (1, process_floor)])
-        people_in = profile_curve([(0, 0.4), (0.4, 0.2), (1, people_floor)])
+@dataclass
+class SimParams:
+    tech_max: float = 1.2
+    process_max: float = 1.0
+    place_max: float = 0.9
+    people_max: float = 1.0
+    penalty_delta: float = 1.5
+    tau_synergy: float = 0.6
+    synergy_gain: float = 0.5
+    interaction_low: float = 0.25
+    tech_high: float = 0.8
+    proc_shift: float = 0.0
+    proc_gamma: float = 1.0
 
-    elif scenario_norm == "SITE Protocol (Socio-Technical)":
-        tech_max = sensitivity_params.get("tech_max", 0.85)
-        place_max = sensitivity_params.get("place_max", 0.9)
-        place_mid = max(0.5, place_max * 0.65)
-        process_start = sensitivity_params.get("process_start", 0.7)
-        process_mid = sensitivity_params.get("process_mid", 0.8)
-        process_end = sensitivity_params.get("process_end", 0.75)
-        people_peak = sensitivity_params.get("people_max", 1.0)
+def simulate_series(profiles: Dict[str, Dict[str, float]], weights: Dict[str, float], steps: int, scenario: str, p: SimParams):
+    scenario = scenario.strip().upper()
+    if scenario not in ("BAU", "SITE"):
+        raise ValueError("scenario must be BAU or SITE")
 
-        tech_in = profile_curve([(0, 0.45), (1, tech_max)])
-        process_in = profile_curve([(0, process_start), (0.4, process_mid), (1, process_end)])
-        place_in = profile_curve([(0, 0.3), (0.6, place_mid), (1, place_max)])
-        people_in = profile_curve([(0, 0.30), (0.6, 0.35), (0.8, 0.6), (1, people_peak)])
-
-    elif scenario_norm == "Sensitivity Test (Custom)":
-        tech_in = np.linspace(0.4, sensitivity_params.get("tech_max", 0.8), steps)
-        place_in = np.linspace(0.4, sensitivity_params.get("place_max", 0.9), steps)
-        process_in = np.linspace(0.5, sensitivity_params.get("process_max", 1.2), steps)
-        people_in = np.linspace(0.4, sensitivity_params.get("people_max", 1.0), steps)
-
+    # normalize weights
+    s = sum(weights.get(a, 0.0) for a in profiles)
+    if s <= 0:
+        w = {a: 1.0/len(profiles) for a in profiles}
     else:
-        tech_in = np.linspace(0.4, sensitivity_params.get("tech_max", 0.8), steps)
-        place_in = np.linspace(0.4, sensitivity_params.get("place_max", 0.9), steps)
-        process_in = np.linspace(0.5, sensitivity_params.get("process_max", 1.2), steps)
-        people_in = np.linspace(0.4, sensitivity_params.get("people_max", 1.0), steps)
+        w = {a: float(weights.get(a, 0.0)/s) for a in profiles}
 
-    synergy_coeff = sensitivity_params.get("synergy_coeff", 0.8)
-    penalty_factor = sensitivity_params.get("penalty", 1.5)
+    if scenario == "BAU":
+        tech_in = _interp_curve([(0, 0.6), (1, p.tech_max)], steps, gamma=1.0)
+        place_in = np.full(steps, 0.2, dtype=float)
+        process_pts = _shift_points([(0, 0.4), (0.4, 0.25), (1, 0.1)], p.proc_shift)
+        people_pts  = _shift_points([(0, 0.4), (0.4, 0.2),  (1, 0.1)], p.proc_shift)
+        process_in = _interp_curve(process_pts, steps, gamma=p.proc_gamma)
+        people_in  = _interp_curve(people_pts,  steps, gamma=p.proc_gamma)
+    else:
+        tech_in = _interp_curve([(0, 0.45), (1, p.tech_max)], steps, gamma=1.0)
+        place_mid = max(0.5, p.place_max * 0.65)
+        proc_start = float(np.clip(0.70 * p.process_max, 0.0, 1.5))
+        proc_mid   = float(np.clip(0.80 * p.process_max, 0.0, 1.5))
+        proc_end   = float(np.clip(0.75 * p.process_max, 0.0, 1.5))
+        process_pts = _shift_points([(0, proc_start), (0.4, proc_mid), (1, proc_end)], p.proc_shift)
+        place_pts   = _shift_points([(0, 0.3), (0.6, place_mid), (1, p.place_max)], p.proc_shift)
+        people_pts  = _shift_points([(0, 0.30), (0.6, 0.35), (0.8, 0.6), (1, p.people_max)], p.proc_shift)
+        process_in = _interp_curve(process_pts, steps, gamma=p.proc_gamma)
+        place_in   = _interp_curve(place_pts,   steps, gamma=p.proc_gamma)
+        people_in  = _interp_curve(people_pts,  steps, gamma=p.proc_gamma)
 
+    A = np.zeros(steps, dtype=float)
+    rows = []
     for t in range(steps):
-        row = {"Step": t}
-        total_acc = 0.0
+        tech_val = float(tech_in[t])
+        proc_val = float(process_in[t])
+        ppl_val  = float(people_in[t])
+        plc_val  = float(place_in[t])
 
-        tech_val = tech_in[t]
-        place_val = place_in[t]
-        process_val = process_in[t]
-        people_val = people_in[t]
+        interaction = proc_val * ppl_val
+        synergy_bonus = p.synergy_gain if proc_val > p.tau_synergy else 0.0
 
-        interaction = max(process_val * people_val, 0.0)
-
-        synergy_bonus = 0.0
-        if process_val > 0.6:
-            synergy_bonus = synergy_coeff * (process_val - 0.6 + 0.5 * people_val)
+        total = 0.0
+        row = {"t": t, "A_total": None, "Technology_in": tech_val, "Process_in": proc_val, "People_in": ppl_val, "Place_in": plc_val, "Interaction": interaction}
 
         for agent, sens in profiles.items():
             tech_eff = tech_val * sens.get("Technology", 0.0) * max(interaction, 0.15)
-            place_eff = place_val * sens.get("Place", 0.0)
-            process_eff = process_val * sens.get("Process", 0.0) * (1.0 + synergy_bonus)
-            people_eff = people_val * sens.get("People", 0.0) * (1.0 + synergy_bonus)
+            plc_eff  = plc_val  * sens.get("Place", 0.0)
+            proc_eff = proc_val * sens.get("Process", 0.0) * (1.0 + synergy_bonus)
+            ppl_eff  = ppl_val  * sens.get("People", 0.0) * (1.0 + synergy_bonus)
 
-            if interaction < 0.25 and tech_val > 0.8:
+            if (interaction < p.interaction_low) and (tech_val > p.tech_high):
                 if tech_eff > 0:
-                    tech_eff = tech_eff / penalty_factor
+                    tech_eff = tech_eff / p.penalty_delta
                 elif tech_eff < 0:
-                    tech_eff = tech_eff * penalty_factor
+                    tech_eff = tech_eff * p.penalty_delta
 
-            raw_score = (tech_eff + place_eff + process_eff + people_eff)
-            acceptance = np.tanh(raw_score) * 100.0
+            raw = tech_eff + plc_eff + proc_eff + ppl_eff
+            acc = np.tanh(raw) * 100.0
+            row[agent] = acc
+            total += acc * w.get(agent, 0.0)
 
-            row[agent] = acceptance
-            total_acc += acceptance * weights.get(agent, 1.0 / len(profiles))
+        row["A_total"] = total
+        A[t] = total
+        rows.append(row)
 
-        row["Total Index"] = total_acc
-        history.append(row)
+    return pd.DataFrame(rows), A
 
-    return pd.DataFrame(history)
-
-# ==========================================
-# 3. UI
-# ==========================================
-st.title("📊 Final Q-Analysis: System Dynamics")
-st.caption("Focus: Fixed 4 Factors & TPPP Feedback Loops for Nature Energy")
-
-uploaded_file = st.sidebar.file_uploader("Upload Final CSV", type=['csv'])
-
-if uploaded_file:
-    try:
-        df_raw = pd.read_csv(uploaded_file)
-        q_cols = [c for c in df_raw.columns if c.startswith('Q') and c[1:].isdigit() and int(c[1:]) <= 24]
-        
-        if len(q_cols) < 5:
-            st.error("Invalid Data: Columns Q01-Q24 not found.")
-            st.stop()
-
-        # Run Engine
-        engine = QEngine(df_raw[q_cols], n_factors=4).fit()
-        
-        # Calculate Systemic Correlations (Raw Data Level)
-        tppp_scores = calculate_tppp_scores(df_raw[q_cols], TPPP_CATEGORIES)
-        corr_matrix = tppp_scores.corr(method='spearman')
-        
-        tab1, tab2, tab3, tab4, tab5 = st.tabs(["1. Typology (Factor Arrays)", "2. Structural Profile (Radar)", "3. Systemic Loops (Triads)", "4. Respondent Loading & Weights", "5. SITE Simulation"])
-        
-        with tab1:
-            st.subheader("Factor Arrays: The 4 Perspectives")
-            fa_df = pd.DataFrame(engine.factor_arrays, index=q_cols, columns=["F1", "F2", "F3", "F4"])
-            fa_df.insert(0, "Category", [Q_TO_TPPP.get(idx) for idx in fa_df.index])
-            fa_df.insert(1, "Statement", [Q_MAP.get(idx) for idx in fa_df.index])
-            st.dataframe(fa_df.style.background_gradient(cmap="RdBu_r", subset=["F1","F2","F3","F4"], vmin=-1.5, vmax=1.5))
-            st.download_button("Download Array CSV", fa_df.to_csv().encode('utf-8-sig'), "factor_arrays_final.csv", "text/csv")
-
-        with tab2:
-            st.subheader("TPPP Structural Perception")
-            tppp_profile = calculate_type_tppp_profile(engine.factor_arrays, q_cols, TPPP_CATEGORIES)
-            fig = go.Figure()
-            categories = list(tppp_profile.index)
-            for col in tppp_profile.columns:
-                fig.add_trace(go.Scatterpolar(r=tppp_profile[col], theta=categories, fill='toself', name=col))
-            fig.update_layout(polar=dict(radialaxis=dict(visible=True, range=[-1.5, 1.5])), title="TPPP Radar Chart")
-            c1, c2 = st.columns([2,1])
-            with c1: st.plotly_chart(fig, use_container_width=True)
-            with c2: st.dataframe(tppp_profile.style.background_gradient(cmap="RdBu_r", vmin=-1, vmax=1).format("{:.3f}"))
-
-        with tab3:
-            st.subheader("Systemic Feedback Loops (Triad Analysis)")
-            c1, c2 = st.columns([1, 1.5])
-            with c1:
-                threshold = st.slider("Correlation Threshold (|r| > )", 0.0, 0.8, 0.25, 0.05)
-                st.markdown("#### Correlation Matrix (Spearman)")
-                st.dataframe(corr_matrix.style.background_gradient(cmap="coolwarm", vmin=-1, vmax=1).format("{:.2f}"))
-            with c2:
-                st.markdown("#### Systemic Network Graph")
-                fig_net = create_system_network(corr_matrix, threshold)
-                st.plotly_chart(fig_net, use_container_width=True)
-
-        with tab4:
-            st.subheader("Respondent Assignments & Population Weights")
-            
-            # [FIXED SECTION START] ---------------------------
-            # 1. Prepare Loading Dataframe
-            loadings_df = pd.DataFrame(engine.loadings, columns=["F1", "F2", "F3", "F4"])
-            
-            # 2. Determine Assigned Type based on Max Absolute Loading
-            factor_cols = ["F1", "F2", "F3", "F4"]
-            loadings_df["Assigned Type"] = loadings_df[factor_cols].abs().idxmax(axis=1)
-            
-            # 3. Concatenate with Metadata
-            meta_cols = [c for c in df_raw.columns if c not in q_cols]
-            if meta_cols:
-                loadings_df = pd.concat([df_raw[meta_cols].reset_index(drop=True), loadings_df], axis=1)
-            
-            # 4. Create Summary Table (Weights)
-            summary_stats = loadings_df["Assigned Type"].value_counts().sort_index()
-            total_respondents = len(loadings_df)
-            
-            # Use list comprehension for safe string formatting (Avoids ufunc error)
-            counts = summary_stats.values
-            weights = counts / total_respondents
-            pct_strings = [f"{w*100:.1f}%" for w in weights]
-            
-            summary_df = pd.DataFrame({
-                "Assigned Type": summary_stats.index,
-                "Count": counts,
-                "Calculated Weight": weights,
-                "Percentage": pct_strings
-            })
-            
-            # Extract weights dictionary for simulation usage
-            calc_weights = dict(zip(summary_df["Assigned Type"], summary_df["Calculated Weight"]))
-
-            # Layout: Left (Summary), Right (Details)
-            col_summ, col_detail = st.columns([1, 2])
-            
-            with col_summ:
-                st.markdown("#### 📋 Weight Distribution Table")
-                st.dataframe(summary_df.style.background_gradient(subset=["Count"], cmap="Greens"))
-                st.info(f"Total Respondents: {total_respondents}")
-                
-            with col_detail:
-                st.markdown("#### 👤 Individual Respondent Assignments")
-                st.dataframe(loadings_df.style.background_gradient(cmap="Blues", subset=["F1","F2","F3","F4"]))
-            # [FIXED SECTION END] -----------------------------
-
-        with tab5:
-            st.subheader("Counterfactual Simulation (SITE Protocol)")
-            st.caption("Validating SITE efficacy using empirical Q-profiles.")
-            
-            # Prepare Profiles
-            profiles = calculate_agent_profiles(fa_df.rename(columns={"Statement": "Statement", "Category": "Category"})) 
-            fa_df_sim = fa_df.copy()
-            fa_df_sim['Q_ID'] = fa_df_sim.index 
-            profiles = calculate_agent_profiles(fa_df_sim)
-            
-            # Weight Configuration (Editable)
-            with st.expander("⚙️ Configure Agent Weights & Parameters"):
-                st.markdown("**1. Agent Weights (Population Share)**")
-                c_w1, c_w2, c_w3, c_w4 = st.columns(4)
-                # Use calculated weights as default
-                w_f1 = c_w1.number_input("F1 Weight", 0.0, 1.0, calc_weights.get("F1", 0.25))
-                w_f2 = c_w2.number_input("F2 Weight", 0.0, 1.0, calc_weights.get("F2", 0.25))
-                w_f3 = c_w3.number_input("F3 Weight", 0.0, 1.0, calc_weights.get("F3", 0.25))
-                w_f4 = c_w4.number_input("F4 Weight", 0.0, 1.0, calc_weights.get("F4", 0.25))
-                custom_weights = {"F1": w_f1, "F2": w_f2, "F3": w_f3, "F4": w_f4}
-                
-                st.markdown("**2. Sensitivity Parameters (Global)**")
-                c_p1, c_p2, c_p3 = st.columns(3)
-                sens_penalty = c_p1.slider("Distrust Penalty", 1.0, 3.0, 1.5, 0.1, help="Resistance multiplier when trust is low")
-                sens_synergy = c_p2.slider("Governance Synergy", 1.0, 2.0, 1.2, 0.1, help="Bonus multiplier when process is high")
-                sens_people_max = c_p3.slider("People Max Input", 0.5, 1.5, 1.0, 0.1, help="Max trust level in SITE scenario")
-                
-                # Parameters for Custom Sensitivity Test
-                st.markdown("**3. Custom Scenario Limits**")
-                c_c1, c_c2, c_c3 = st.columns(3)
-                sens_tech = c_c1.slider("Max Tech Input", 0.5, 1.5, 0.8, 0.1)
-                sens_place = c_c2.slider("Max Place Input", 0.5, 1.5, 0.9, 0.1)
-                sens_process = c_c3.slider("Max Process Input", 0.5, 1.5, 1.2, 0.1)
-
-                sens_params = {
-                    "tech_max": sens_tech, "place_max": sens_place, 
-                    "process_max": sens_process, "people_max": sens_people_max, 
-                    "penalty": sens_penalty, "synergy": sens_synergy
-                }
-                
-                st.markdown("##### Agent Sensitivities (Initial Parameters)")
-                sens_df = pd.DataFrame(profiles).T
-                st.dataframe(sens_df.style.background_gradient(cmap="RdBu", vmin=-1, vmax=1).format("{:.2f}"))
-
-            sim_steps = st.slider("Simulation Duration (Months)", 12, 60, 24)
-            tech_range = np.linspace(0.5, 1.2, 30)
-            process_range = np.linspace(0.5, 1.5, 30)
-            
-            Z_bau = np.zeros((len(tech_range), len(process_range)))
-            Z_site = np.zeros((len(tech_range), len(process_range)))
-            
-            for i, tech in enumerate(tech_range):
-                for j, proc in enumerate(process_range):
-                    params = {"tech_max": float(tech), "process_max": float(proc), "place_max": 0.9, "people_max": 1.0}
-                    # BAU sensitivity (allow tech/process maxima to vary via sensitivity_params)
-                    df_b = run_simulation(profiles, steps=24, scenario="BAU (Technocratic Push)", weights=custom_weights, sensitivity_params=params)
-                    Z_bau[i, j] = df_b["Total Index"].mean()
-                    # SITE sensitivity (same grid values but SITE governance baseline)
-                    df_s = run_simulation(profiles, steps=24, scenario="SITE Protocol (Socio-Technical)", weights=custom_weights, sensitivity_params=params)
-                    Z_site[i, j] = df_s["Total Index"].mean()
-
-            # Difference surface (SITE - BAU)
-            Z_diff = Z_site - Z_bau
-            
-            T, R = np.meshgrid(process_range, tech_range)
-            # Run Scenarios
-            df_bau = run_simulation(profiles, steps=sim_steps, scenario="BAU (Technocratic Push)", weights=custom_weights, sensitivity_params=sens_params)
-            df_site = run_simulation(profiles, steps=sim_steps, scenario="SITE Protocol (Socio-Technical)", weights=custom_weights, sensitivity_params=sens_params)
-            df_custom = run_simulation(profiles, steps=sim_steps, scenario="Sensitivity Test (Custom)", weights=custom_weights, sensitivity_params=sens_params)
-
-            # Visualization: 2-Column Layout
-            col_bau, col_site = st.columns(2)
-            
-            # [Adjusted] Y-Range: Focus on realistic data range + margin
-            y_min = -30; y_max = 80 
-            
-            # Define marker styles for Grayscale compatibility
-            # F1: Circle, F2: Square, F3: Diamond, F4: Triangle-Up
-            markers = {"F1": "circle", "F2": "square", "F3": "diamond", "F4": "triangle-up"}
-            dash_styles = {"F1": "dot", "F2": "dot", "F3": "dot", "F4": "dot"} # Dotted for agents
-            
-            # --- BAU Plot ---
-            with col_bau:
-                fig_bau = go.Figure()
-                # Agents (Grayscale)
-                for agent in ["F1", "F2", "F3", "F4"]:
-                    fig_bau.add_trace(go.Scatter(
-                        x=df_bau["Step"], y=df_bau[agent], name=agent,
-                        mode='lines+markers',
-                        line=dict(color='gray', width=1, dash=dash_styles[agent]),
-                        marker=dict(symbol=markers[agent], size=6, color='black'),
-                        opacity=0.6
-                    ))
-                # Total Index (Red Solid)
-                fig_bau.add_trace(go.Scatter(
-                    x=df_bau["Step"], y=df_bau["Total Index"], name="Total (BAU)",
-                    mode='lines',
-                    line=dict(color='#E63946', width=4)
-                ))
-                fig_bau.add_hline(y=0, line_dash="dash", line_color="black")
-                fig_bau.update_layout(title="(A) BAU Scenario (Deadlock)", yaxis_range=[y_min, y_max], template="plotly_white", showlegend=False)
-                st.plotly_chart(fig_bau, use_container_width=True)
-
-            # --- SITE Plot ---
-            with col_site:
-                fig_site = go.Figure()
-                # Agents (Grayscale)
-                for agent in ["F1", "F2", "F3", "F4"]:
-                    fig_site.add_trace(go.Scatter(
-                        x=df_site["Step"], y=df_site[agent], name=agent,
-                        mode='lines+markers',
-                        line=dict(color='gray', width=1, dash=dash_styles[agent]),
-                        marker=dict(symbol=markers[agent], size=6, color='black'),
-                        opacity=0.6
-                    ))
-                # Total Index (Blue Solid)
-                fig_site.add_trace(go.Scatter(
-                    x=df_site["Step"], y=df_site["Total Index"], name="Total (SITE)",
-                    mode='lines',
-                    line=dict(color='#457B9D', width=4)
-                ))
-                fig_site.add_hline(y=0, line_dash="dash", line_color="black")
-                fig_site.update_layout(title="(B) SITE Protocol (Consensus)", yaxis_range=[y_min, y_max], template="plotly_white", showlegend=True)
-                st.plotly_chart(fig_site, use_container_width=True)
-            
-            st.success("The visual contrast between Red (BAU) and Blue (SITE) lines, along with distinct agent markers, highlights the structural shift from conflict to consensus.")
-            
-            # --- Sensitivity Comparison Plot ---
-            st.markdown("---")
-            st.markdown("#### Scenario Comparison (Sensitivity Check)")
-            
-            zmin = min(Z_bau.min(), Z_site.min())
-            zmax = max(Z_bau.max(), Z_site.max())
-            
-            fig = make_subplots(
-                rows=1, cols=2,
-                specs=[[{'type': 'surface'}, {'type': 'surface'}]],
-                subplot_titles=("BAU: Avg Total Index", "SITE: Avg Total Index"),
-                horizontal_spacing=0.1
-            )
-            
-            def add_scenario_trace(fig, Z_data, row, col, name_prefix):
-                fig.add_trace(
-                    go.Surface(
-                        x=R, y=T, z=Z_data,
-                        colorscale='Plasma',
-                        cmin=zmin, cmax=zmax,
-                        opacity=0.9,
-                        showscale=(col==2),
-                        colorbar=dict(title="Acceptance Index", x=1.02, len=0.6) if col==2 else None
-                    ),
-                    row=row, col=col
+# =========================================================
+# 5) Cached sensitivity functions
+# =========================================================
+@st.cache_data(show_spinner=False)
+def run_process_tech_grid(profiles, weights, steps, penalty_delta, tau_synergy, synergy_gain, tech_vals, process_vals):
+    rows = []
+    for scen in ("BAU", "SITE"):
+        for tech in tech_vals:
+            for proc in process_vals:
+                p = SimParams(
+                    tech_max=float(tech),
+                    process_max=float(proc),
+                    penalty_delta=float(penalty_delta),
+                    tau_synergy=float(tau_synergy),
+                    synergy_gain=float(synergy_gain),
                 )
-                
-                max_idx = np.unravel_index(np.argmax(Z_data), Z_data.shape)
-                min_idx = np.unravel_index(np.argmin(Z_data), Z_data.shape)
-                
-                p_max = (process_range[max_idx[1]], tech_range[max_idx[0]], Z_data[max_idx]) # x, y, z
-                p_min = (process_range[min_idx[1]], tech_range[min_idx[0]], Z_data[min_idx])
-                
-                fig.add_trace(
-                    go.Scatter3d(
-                        x=[p_max[0]], y=[p_max[1]], z=[p_max[2]],
-                        mode='markers+text',
-                        marker=dict(size=5, color='yellow', line=dict(color='black', width=2)),
-                        text=[f"{name_prefix} max: {p_max[2]:.2f}"],
-                        textposition="top center",
-                        textfont=dict(color="black", size=11, family="Arial"),
-                        showlegend=False
-                    ),
-                    row=row, col=col
-                )
-                fig.add_trace(
-                    go.Scatter3d(
-                        x=[p_min[0]], y=[p_min[1]], z=[p_min[2]],
-                        mode='markers+text',
-                        marker=dict(size=5, color='cyan', line=dict(color='black', width=2)),
-                        text=[f"{name_prefix} min: {p_min[2]:.2f}"],
-                        textposition="bottom center",
-                        textfont=dict(color="black", size=11, family="Arial"),
-                        showlegend=False
-                    ),
-                    row=row, col=col
-                )
-            
-            add_scenario_trace(fig, Z_bau, 1, 1, "BAU")
-            add_scenario_trace(fig, Z_site, 1, 2, "SITE")
-            
-            camera_view = dict(eye=dict(x=1.6, y=-1.6, z=0.6))
-            common_axis = dict(
-                xaxis_title="Process Input",
-                yaxis_title="Tech Input",
-                zaxis_title="Avg Acc Index",
-                zaxis=dict(range=[zmin, zmax])
-            )
-            
-            fig.update_layout(
-                title_text="",
-                height=600,
-                width=1200,
-                margin=dict(l=10, r=10, b=10, t=40),
-                scene=dict(**common_axis, camera=camera_view),
-                scene2=dict(**common_axis, camera=camera_view)
-            )
+                _, A = simulate_series(profiles, weights, steps, scen, p)
+                met = calculate_metrics(A)
+                rows.append({"scenario": scen, "tech_max": float(tech), "process_max": float(proc), **met})
+    return pd.DataFrame(rows)
 
-            st.plotly_chart(fig, use_container_width=True)
-            
-    except Exception as e:
-        st.error(f"Error processing file: {e}")
+def boundary_curve_from_grid(df_grid, scenario, metric="mean"):
+    out = []
+    sub = df_grid[df_grid["scenario"] == scenario].copy()
+    for t in sorted(sub["tech_max"].unique()):
+        s = sub[sub["tech_max"] == t].sort_values("process_max")
+        ok = s[s[metric] > 0]
+        out.append((float(t), np.nan if ok.empty else float(ok["process_max"].iloc[0])))
+    return pd.DataFrame(out, columns=["tech_max", f"min_process_for_{metric}_gt0"])
 
-else:
-    st.info("Upload the CSV file to generate the final 4-factor report.")
+# =========================================================
+# 6) UI
+# =========================================================
+st.title("Final Q-TPPP + ABM Pre-evaluation (Nature Energy)")
+st.caption("Integrated Streamlit app for NE submission: Q-methodology (4 factors) → TPPP → SITE vs BAU simulation + sensitivity.")
+
+uploaded_file = st.sidebar.file_uploader("Upload Final CSV (Q01–Q24 required)", type=["csv"])
+if not uploaded_file:
+    st.info("Upload a CSV to start.")
+    st.stop()
+
+df_raw = pd.read_csv(uploaded_file)
+q_cols = [c for c in df_raw.columns if c.startswith("Q") and c[1:].isdigit() and int(c[1:]) <= 24]
+q_cols = sorted(q_cols, key=lambda x: int(x[1:]))
+if len(q_cols) < 24:
+    st.error("Invalid data: requires columns Q01–Q24.")
+    st.stop()
+
+engine = QEngine(df_raw[q_cols], n_factors=4).fit()
+
+fa_df = pd.DataFrame(engine.factor_arrays, index=q_cols, columns=FACTOR_NAMES)
+fa_df_display = fa_df.copy()
+fa_df_display.insert(0, "Category", [Q_TO_TPPP.get(q) for q in fa_df_display.index])
+fa_df_display.insert(1, "Statement", [Q_MAP.get(q) for q in fa_df_display.index])
+
+tppp_scores = calculate_tppp_scores(df_raw[q_cols])
+corr_matrix = tppp_scores.corr(method="spearman")
+
+tab1, tab2, tab3, tab4, tab5 = st.tabs([
+    "1) Typology (Factor Arrays)",
+    "2) TPPP Profile (Radar)",
+    "3) TPPP Links (Spearman)",
+    "4) Respondent Loadings & Weights",
+    "5) SITE vs BAU Simulation (Tab 5)",
+])
+
+with tab1:
+    st.subheader("Factor Arrays (4 perspectives)")
+    st.dataframe(fa_df_display, use_container_width=True)
+    st.download_button("Download factor arrays CSV", fa_df_display.to_csv(index=True).encode("utf-8-sig"), "factor_arrays_final.csv", "text/csv")
+
+with tab2:
+    st.subheader("TPPP Structural Perception (Radar)")
+    tppp_profile = calculate_type_tppp_profile(engine.factor_arrays, q_cols)
+    fig = go.Figure()
+    categories = list(tppp_profile.index)
+    for col in tppp_profile.columns:
+        fig.add_trace(go.Scatterpolar(r=tppp_profile[col], theta=categories, fill="toself", name=col))
+    fig.update_layout(polar=dict(radialaxis=dict(visible=True, range=[-1.5, 1.5])), title="TPPP Radar Chart")
+    st.plotly_chart(fig, use_container_width=True)
+    st.dataframe(tppp_profile, use_container_width=True)
+
+with tab3:
+    st.subheader("TPPP Association Structure (Spearman)")
+    threshold = st.slider("Link threshold |ρ| >", 0.0, 0.8, 0.25, 0.05)
+    c1, c2 = st.columns([1, 1.5])
+    with c1:
+        st.markdown("**Spearman correlation matrix**")
+        st.dataframe(corr_matrix, use_container_width=True)
+    with c2:
+        st.markdown("**System network**")
+        st.plotly_chart(create_system_network(corr_matrix, threshold), use_container_width=True)
+
+with tab4:
+    st.subheader("Respondent assignments & population weights")
+    loadings_df = pd.DataFrame(engine.loadings, columns=FACTOR_NAMES)
+    loadings_df["Assigned Type"] = loadings_df[FACTOR_NAMES].abs().idxmax(axis=1)
+    summary = loadings_df["Assigned Type"].value_counts().sort_index()
+    total = len(loadings_df)
+    weights_est = (summary / total).to_dict()
+    summary_df = pd.DataFrame({
+        "Assigned Type": summary.index,
+        "Count": summary.values,
+        "Calculated Weight": [weights_est[k] for k in summary.index],
+        "Percentage": [f"{weights_est[k]*100:.1f}%" for k in summary.index],
+    })
+    c1, c2 = st.columns([1, 2])
+    with c1:
+        st.dataframe(summary_df, use_container_width=True)
+    with c2:
+        st.dataframe(loadings_df, use_container_width=True)
+
+with tab5:
+    st.subheader("SITE vs BAU simulation + sensitivity (integrated)")
+    st.caption("Includes scenario trajectories and S10-style process×tech boundary mapping.")
+
+    profiles = calculate_agent_profiles_from_factor_arrays(fa_df)
+    st.markdown("**Agent sensitivities (median z by category)**")
+    st.dataframe(pd.DataFrame(profiles).T, use_container_width=True)
+
+    st.markdown("#### Controls")
+    c1, c2, c3, c4 = st.columns(4)
+    w1 = c1.number_input("F1 weight", 0.0, 1.0, float(weights_est.get("F1", 0.25)))
+    w2 = c2.number_input("F2 weight", 0.0, 1.0, float(weights_est.get("F2", 0.25)))
+    w3 = c3.number_input("F3 weight", 0.0, 1.0, float(weights_est.get("F3", 0.25)))
+    w4 = c4.number_input("F4 weight", 0.0, 1.0, float(weights_est.get("F4", 0.25)))
+    w_custom = {"F1": w1, "F2": w2, "F3": w3, "F4": w4}
+
+    d1, d2, d3, d4 = st.columns(4)
+    penalty_delta = d1.slider("Deadlock penalty δ", 1.0, 3.0, 1.5, 0.1)
+    tau_synergy = d2.slider("Synergy threshold τ", 0.3, 0.9, 0.6, 0.05)
+    synergy_gain = d3.slider("Synergy gain", 0.0, 1.0, 0.5, 0.05)
+    steps = d4.slider("Simulation steps", 12, 60, 24)
+
+    t1, t2, t3 = st.columns(3)
+    tech_max = t1.slider("tech_max", 0.5, 1.5, 1.2, 0.05)
+    process_max = t2.slider("process_max (SITE)", 0.5, 1.5, 1.0, 0.05)
+    proc_shift = t3.slider("proc_shift (timing)", -0.2, 0.2, 0.0, 0.05)
+
+    params = SimParams(
+        tech_max=float(tech_max),
+        process_max=float(process_max),
+        penalty_delta=float(penalty_delta),
+        tau_synergy=float(tau_synergy),
+        synergy_gain=float(synergy_gain),
+        proc_shift=float(proc_shift),
+        proc_gamma=1.0
+    )
+
+    hist_bau, A_bau = simulate_series(profiles, w_custom, int(steps), "BAU", params)
+    hist_site, A_site = simulate_series(profiles, w_custom, int(steps), "SITE", params)
+    met_bau = calculate_metrics(A_bau)
+    met_site = calculate_metrics(A_site)
+
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(x=hist_bau["t"], y=hist_bau["A_total"], name="BAU A_total", line=dict(color="darkred", width=3)))
+    fig.add_trace(go.Scatter(x=hist_site["t"], y=hist_site["A_total"], name="SITE A_total", line=dict(color="darkblue", width=3)))
+    fig.add_hline(y=0, line_dash="dash", line_color="black")
+    fig.update_layout(title="A_total trajectories", xaxis_title="t", yaxis_title="A_total (±100)", template="plotly_white")
+    st.plotly_chart(fig, use_container_width=True)
+
+    c1, c2 = st.columns(2)
+    with c1:
+        st.markdown("**BAU metrics**")
+        st.json(met_bau)
+    with c2:
+        st.markdown("**SITE metrics**")
+        st.json(met_site)
+
+    st.markdown("---")
+    st.markdown("#### S10-style: process_max × tech_max grid (mean criterion)")
+
+    tech_vals = tuple(np.linspace(0.5, 1.5, 20).round(6))
+    process_vals = tuple(np.linspace(0.5, 1.5, 20).round(6))
+
+    if st.button("Run grid search (BAU & SITE)", type="primary"):
+        with st.spinner("Running grid…"):
+            df_grid = run_process_tech_grid(
+                profiles=profiles,
+                weights=w_custom,
+                steps=int(steps),
+                penalty_delta=float(penalty_delta),
+                tau_synergy=float(tau_synergy),
+                synergy_gain=float(synergy_gain),
+                tech_vals=tech_vals,
+                process_vals=process_vals,
+            )
+        st.success("Grid complete.")
+
+        # boundary curves
+        bau_bc = boundary_curve_from_grid(df_grid, "BAU", metric="mean")
+        site_bc = boundary_curve_from_grid(df_grid, "SITE", metric="mean")
+
+        fig_bc = go.Figure()
+        fig_bc.add_trace(go.Scatter(x=bau_bc["tech_max"], y=bau_bc["min_process_for_mean_gt0"], mode="lines+markers", name="BAU boundary", line=dict(color="darkred", width=3)))
+        fig_bc.add_trace(go.Scatter(x=site_bc["tech_max"], y=site_bc["min_process_for_mean_gt0"], mode="lines+markers", name="SITE boundary", line=dict(color="darkblue", width=3)))
+        fig_bc.update_layout(title="Viability boundary curves (mean>0)", xaxis_title="tech_max", yaxis_title="min process_max", template="plotly_white")
+        st.plotly_chart(fig_bc, use_container_width=True)
+
+        st.download_button("Download grid CSV", df_grid.to_csv(index=False).encode("utf-8-sig"), "process_tech_grid_metrics.csv", "text/csv")
+
+    st.markdown("---")
+    st.markdown("**Concise claim for NE**")
+    st.write(
+        "These simulation-based evaluations provide preliminary, model-contingent evidence that the SITE protocol is more likely than BAU to achieve net-positive consensus across plausible configurations, particularly when procedural legitimacy is established early."
+    )
