@@ -370,7 +370,6 @@ def boundary_curve_from_grid(df_grid, scenario, metric="mean"):
 # 5b) Supplementary plot helpers (S9, S10a, S10b)
 # =========================================================
 def _find_zero_cross_piecewise(x: np.ndarray, y: np.ndarray, target: float = 0.0):
-    \"\"\"Piecewise-linear zero-cross within observed grid (no extrapolation).\"\"\"
     x = np.asarray(x, float)
     y = np.asarray(y, float)
     for i in range(1, len(x)):
@@ -381,7 +380,6 @@ def _find_zero_cross_piecewise(x: np.ndarray, y: np.ndarray, target: float = 0.0
     return None
 
 def make_s10a_slice_plot(df_grid: pd.DataFrame, tech_slice: float, tau_synergy: float):
-    \"\"\"S10a: Representative slice (tech_max fixed). Mean acceptance vs Process (BAU vs SITE).\"\"\"
     bau = df_grid[(df_grid["scenario"]=="BAU") & (np.isclose(df_grid["tech_max"], tech_slice))].sort_values("process_max")
     site = df_grid[(df_grid["scenario"]=="SITE") & (np.isclose(df_grid["tech_max"], tech_slice))].sort_values("process_max")
 
@@ -425,7 +423,6 @@ def make_s10a_slice_plot(df_grid: pd.DataFrame, tech_slice: float, tau_synergy: 
     return fig
 
 def make_s10b_boundary_curve_plot(df_grid: pd.DataFrame):
-    \"\"\"S10b: Boundary curves across tech_max (mean acceptance criterion).\"\"\"
     bau_bc = boundary_curve_from_grid(df_grid, "BAU", metric="mean")
     site_bc = boundary_curve_from_grid(df_grid, "SITE", metric="mean")
 
@@ -452,7 +449,6 @@ def run_s9_robustness_screening(
     tau_synergy: float,
     synergy_gain: float,
 ):
-    \"\"\"S9: robustness screening over ω_i (Dirichlet around base_weights) and δ at fixed tech_max.\"\"\"
     base = np.array([base_weights.get("F1", 0.25), base_weights.get("F2", 0.25), base_weights.get("F3", 0.25), base_weights.get("F4", 0.25)], float)
     base = base / base.sum()
     alpha = base * 30.0  # concentration around base
@@ -513,7 +509,6 @@ def run_s9_robustness_screening(
     return pd.DataFrame(rows)
 
 def make_s9_plot(df_s9: pd.DataFrame, tech_fixed: float):
-    \"\"\"S9: clarified two-panel plot (boxplots + deadlock-like rate).\"\"\"
     deltas = np.array(sorted(df_s9["delta"].unique()))
     data_bau = [df_s9[df_s9["delta"] == d]["bau_mean_boundary"].dropna().values for d in deltas]
     data_site = [df_s9[df_s9["delta"] == d]["site_mean_boundary"].dropna().values for d in deltas]
